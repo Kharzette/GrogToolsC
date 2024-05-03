@@ -1,0 +1,6 @@
+Goal:
+    ColladaConvert functionality on linux / windows
+
+approaches:
+    C program with cross plat gui system for the gui bits.
+        Call into the dotnet guts of existing ColladaConvert?
