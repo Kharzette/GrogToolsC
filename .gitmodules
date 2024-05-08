@@ -1,3 +1,6 @@
 [submodule "nappgui_src"]
 	path = nappgui_src
 	url = git@github.com:frang75/nappgui_src.git
+[submodule "GrogLibsC"]
+	path = GrogLibsC
+	url = git@github.com:Kharzette/GrogLibsC.git

@@ -1,6 +1,21 @@
 Goal:
-    ColladaConvert functionality on linux / windows
+	ColladaConvert functionality on linux / windows
 
 approaches:
-    C program with cross plat gui system for the gui bits.
-        Call into the dotnet guts of existing ColladaConvert?
+	C program with cross plat gui system for the gui bits.
+		Call into the dotnet guts of existing ColladaConvert?
+
+dotnet side functionality
+	load a collada static or character, convert
+	load a collada animation
+
+C side functionality
+	edit collision shapes
+	create and edit materials
+	skeleton edit stuff
+	strip vertex elements
+
+dotnet arguments
+	-centimeters -grog -meters -valve -quake	units to use
+	-static filename.dae						Load static dae file, save .mesh and .static
+	-character filename.dae						Load character dae file, save .mesh and .character
