@@ -195,7 +195,7 @@ static AppContext	*sAppCreate(void)
 	{
 		printf("Couldn't create StuffKeeper!\n");
 		GD_Destroy(&pApp->mpGD);
-		heap_free(&pApp, sizeof(AppContext), NULL);
+		heap_free((uint8_t **)&pApp, sizeof(AppContext), NULL);
 		return	NULL;
 	}
 
@@ -604,4 +604,14 @@ static void sLoadCharacter(AppContext *pAC, Event *pEvt)
 	printf("sLoadCharacter!\n");
 
 	unref(pEvt);
+
+	const char	*fTypes[]	={	"character", "Character"	};
+
+	const char	*pFileName	=comwin_open_file(pAC->mpWnd, fTypes, 2, NULL);
+
+	printf("FileName: %s\n", pFileName);
+
+	pAC->mpChar	=Character_Read(pFileName);
+
+	printf("Character loaded...\n");
 }
