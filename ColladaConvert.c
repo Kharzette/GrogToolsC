@@ -85,6 +85,9 @@ static void	KeyTurnDownEH(void *pContext, const SDL_Event *pEvt);
 static void MouseMoveEH(void *pContext, const SDL_Event *pEvt);
 static void EscEH(void *pContext, const SDL_Event *pEvt);
 
+//button event handlers
+static void sLoadCharacter(AppContext *pAC, Event *pEvt);
+
 
 static Window	*sCreateWindow(void)
 {
@@ -146,7 +149,7 @@ static AppContext	*sAppCreate(void)
 	Button	*pB7	=button_push();
 	Button	*pB8	=button_push();
 
-	button_text(pB0, "Blort0");
+	button_text(pB0, "Load Character");
 	button_text(pB1, "Blort1");
 	button_text(pB2, "Blort2");
 	button_text(pB3, "Blort3");
@@ -165,6 +168,8 @@ static AppContext	*sAppCreate(void)
 	layout_button(pLay, pB6, 2, 0);
 	layout_button(pLay, pB7, 2, 1);
 	layout_button(pLay, pB8, 2, 2);
+
+	button_OnClick(pB0, listener(pApp, sLoadCharacter, AppContext));
 
 	Panel	*pPanel	=panel_create();
 
@@ -215,8 +220,9 @@ static AppContext	*sAppCreate(void)
 
 	float	aspect	=(float)RESX / (float)RESY;
 
-	pApp->mEyePos[1]	=0.6f;
-	pApp->mEyePos[2]	=4.5f;
+	pApp->mEyePos[1]	=3.6f;
+	pApp->mEyePos[2]	=-4.5f;
+	pApp->mEyePos[0]	=-3.0f;
 
 	//game camera
 	pApp->mpCam	=GameCam_Create(false, 0.1f, 2000.0f, GLM_PI_4f, aspect, 1.0f, 10.0f);
@@ -237,6 +243,8 @@ static AppContext	*sAppCreate(void)
 	pApp->mLightDir[2]		=-0.5f;
 
 	glm_vec3_normalize(pApp->mLightDir);
+
+	pApp->mbRunning	=true;
 
 	return	pApp;
 }
@@ -328,6 +336,11 @@ static void sRender(AppContext *pApp, const real64_t prTime, const real64_t cTim
 
 static void sAppUpdate(AppContext *pApp, const real64_t prTime, const real64_t cTime)
 {
+	if(!pApp->mbRunning)
+	{
+		osapp_finish();
+	}
+
 	pApp->mDeltaYaw		=0.0f;
 	pApp->mDeltaPitch	=0.0f;
 
@@ -583,4 +596,12 @@ static void	EscEH(void *pContext, const SDL_Event *pEvt)
 	assert(pTS);
 
 	pTS->mbRunning	=false;
+}
+
+
+static void sLoadCharacter(AppContext *pAC, Event *pEvt)
+{
+	printf("sLoadCharacter!\n");
+
+	unref(pEvt);
 }
