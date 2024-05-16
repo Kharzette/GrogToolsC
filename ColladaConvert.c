@@ -4,6 +4,9 @@
 #include	"UtilityLib/GraphicsDevice.h"
 #include	"UtilityLib/GameCamera.h"
 #include	"UtilityLib/MiscStuff.h"
+#include	"UtilityLib/ListStuff.h"
+#include	"UtilityLib/StringStuff.h"
+#include	"UtilityLib/DictionaryStuff.h"
 #include	"MaterialLib/StuffKeeper.h"
 #include	"MaterialLib/Material.h"
 #include	"MaterialLib/MaterialLib.h"
@@ -24,9 +27,6 @@
 #define	MOVE_RATE		0.1f
 #define	MOUSE_TO_ANG	0.001f
 
-//should match CommonFunctions.hlsli
-#define	MAX_BONES		55
-
 //this gets passed into events and such
 //will likely grow
 typedef struct AppContext_t
@@ -45,9 +45,8 @@ typedef struct AppContext_t
 	AnimLib		*mpALib;
 	Character	*mpChar;
 //	StaticMesh	*mpStatic;
-	Mesh		*mpMesh;
-	Material	*mpCharMat;
 	MaterialLib	*mpMatLib;
+	DictSZ		*mpMeshes;
 
 	//prims
 	LightRay	*mpLR;
@@ -58,9 +57,13 @@ typedef struct AppContext_t
 	vec3	mEyePos;
 	float	mDeltaYaw, mDeltaPitch;
 	bool	mbRunning, mbMouseLooking;
+	int		mAnimIndex, mMatIndex;
+	float	mAnimTime;
 
-	//bones for animation
-	mat4	mBones[MAX_BONES];
+	//list of stuff loaded
+	const StringList	*mpAnimList;
+	const StringList	*mpMatList;
+	const StringList	*mpMeshList;
 
 }  AppContext;
 
@@ -90,6 +93,7 @@ static void EscEH(void *pContext, const SDL_Event *pEvt);
 //button event handlers
 static void sLoadCharacter(AppContext *pAC, Event *pEvt);
 static void sLoadMaterialLib(AppContext *pAC, Event *pEvt);
+static void sLoadAnimLib(AppContext *pAC, Event *pEvt);
 
 
 static Window	*sCreateWindow(void)
@@ -154,7 +158,7 @@ static AppContext	*sAppCreate(void)
 
 	button_text(pB0, "Load Character");
 	button_text(pB1, "Load MatLib");
-	button_text(pB2, "Blort2");
+	button_text(pB2, "Load AnimLib");
 	button_text(pB3, "Blort3");
 	button_text(pB4, "Blort4");
 	button_text(pB5, "Blort5");
@@ -174,6 +178,7 @@ static AppContext	*sAppCreate(void)
 
 	button_OnClick(pB0, listener(pApp, sLoadCharacter, AppContext));
 	button_OnClick(pB1, listener(pApp, sLoadMaterialLib, AppContext));
+	button_OnClick(pB2, listener(pApp, sLoadAnimLib, AppContext));
 
 	Panel	*pPanel	=panel_create();
 
@@ -269,10 +274,18 @@ static void sRender(AppContext *pApp, const real64_t prTime, const real64_t cTim
 	vec4	YAxisCol	={	0.0f, 0.0f, 1.0f, 1.0f	};
 	vec4	ZAxisCol	={	0.0f, 1.0f, 0.0f, 1.0f	};
 
-	if(pApp->mpChar != NULL && pApp->mpALib != NULL)
+	if(pApp->mpALib != NULL)
 	{
-		Character_FillBoneArray(pApp->mpChar,
-			AnimLib_GetSkeleton(pApp->mpALib), pApp->mBones);
+		int					index	=0;
+		const StringList	*pCur	=SZList_Iterate(pApp->mpAnimList);
+		while(pCur != NULL)
+		{
+			if(index == pApp->mAnimIndex)
+			{
+				AnimLib_Animate(pApp->mpALib, SZList_IteratorVal(pCur), pApp->mAnimTime);
+			}
+			pCur	=SZList_IteratorNext(pCur);
+		}
 	}
 
 	//set no blend, I think post processing turns it on maybe
@@ -309,23 +322,14 @@ static void sRender(AppContext *pApp, const real64_t prTime, const real64_t cTim
 	//draw xyz axis
 	CP_DrawAxis(pApp->mpAxis, pApp->mLightDir, XAxisCol, YAxisCol, ZAxisCol, pApp->mpCBK, pApp->mpGD);
 
-	//set mesh draw stuff
-	if(pApp->mpCharMat != NULL)
-	{
-		MAT_SetWorld(pApp->mpCharMat, GLM_MAT4_IDENTITY);
-	}
-	
 	GD_PSSetSampler(pApp->mpGD, StuffKeeper_GetSamplerState(pApp->mpSK, "PointClamp"), 0);
 
-	//bones
-	CBK_SetBonesWithTranspose(pApp->mpCBK, pApp->mBones);
-	CBK_UpdateCharacter(pApp->mpCBK, pApp->mpGD);
-	CBK_SetCharacterToShaders(pApp->mpCBK, pApp->mpGD);
-
 	//draw mesh
-	if(pApp->mpMesh != NULL)
+	if(pApp->mpMeshes != NULL && pApp->mpChar != NULL &&
+		pApp->mpALib != NULL && pApp->mpMatLib != NULL)
 	{
-		Mesh_DrawMat(pApp->mpMesh, pApp->mpGD, pApp->mpCBK, pApp->mpCharMat);
+		Character_Draw(pApp->mpChar, pApp->mpMeshes, pApp->mpMatLib,
+						pApp->mpALib, pApp->mpGD, pApp->mpCBK);
 	}
 
 	PP_ClearDepth(pApp->mpPP, pApp->mpGD, "BackDepth");
@@ -350,6 +354,8 @@ static void sAppUpdate(AppContext *pApp, const real64_t prTime, const real64_t c
 	{
 		osapp_finish();
 	}
+
+	pApp->mAnimTime		+=cTime;
 
 	pApp->mDeltaYaw		=0.0f;
 	pApp->mDeltaPitch	=0.0f;
@@ -622,6 +628,27 @@ static void sLoadCharacter(AppContext *pAC, Event *pEvt)
 	pAC->mpChar	=Character_Read(pFileName);
 
 	printf("Character loaded...\n");
+
+	pAC->mpMeshList	=Character_GetPartList(pAC->mpChar);
+
+	DictSZ_New(&pAC->mpMeshes);
+
+	UT_string	*szPath	=SZ_StripFileName(pFileName);
+
+	UT_string	*szFullPath;
+	utstring_new(szFullPath);
+
+	const StringList	*pCur	=SZList_Iterate(pAC->mpMeshList);
+	while(pCur != NULL)
+	{
+		utstring_printf(szFullPath, "%s/%s.mesh", utstring_body(szPath), SZList_IteratorVal(pCur));
+
+		Mesh	*pMesh	=Mesh_Read(pAC->mpGD, pAC->mpSK, utstring_body(szFullPath));
+
+		DictSZ_Add(&pAC->mpMeshes, SZList_IteratorValUT(pCur), pMesh);
+
+		pCur	=SZList_IteratorNext(pCur);
+	}
 }
 
 static void sLoadMaterialLib(AppContext *pAC, Event *pEvt)
@@ -636,5 +663,33 @@ static void sLoadMaterialLib(AppContext *pAC, Event *pEvt)
 
 	pAC->mpMatLib	=MatLib_Read(pFileName, pAC->mpSK);
 
+	pAC->mpMatList	=MatLib_GetMatList(pAC->mpMatLib);
+
 	printf("Material lib loaded...\n");
+}
+
+static void sLoadAnimLib(AppContext *pAC, Event *pEvt)
+{
+	unref(pEvt);
+
+	const char	*fTypes[]	={	"AnimLib", "Animlib", "animlib"	};
+
+	const char	*pFileName	=comwin_open_file(pAC->mpWnd, fTypes, 3, NULL);
+
+	printf("FileName: %s\n", pFileName);
+
+	pAC->mpALib	=AnimLib_Read(pFileName);
+
+	pAC->mpAnimList	=AnimLib_GetAnimList(pAC->mpALib);
+
+	printf("Anim lib loaded...\n");
+
+	const StringList	*pCur	=SZList_Iterate(pAC->mpAnimList);
+
+	while(pCur != NULL)
+	{
+		printf("\t%s\n", SZList_IteratorVal(pCur));
+
+		pCur	=SZList_IteratorNext(pCur);
+	}
 }
