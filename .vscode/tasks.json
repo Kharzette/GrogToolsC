@@ -35,7 +35,7 @@
         {
             "type": "shell",
             "label": "copySDL",
-            "command": "cp GrogLibsC/SDL/build/libSDL3.so.0 libs/",
+            "command": "cp GrogLibsC/SDL/build/libSDL3.so.0 ${config:CurrentGameLibs}",
             "group": "none",
             "options": {"cwd": "${workspaceFolder}"},
             "detail": "Copy SDL lib to game libs directory for testing."
@@ -43,7 +43,7 @@
         {
             "type": "shell",
             "label": "copyFAudio",
-            "command": "cp GrogLibsC/AudioLib/FAudio/build/libFAudio.so.0 libs/",
+            "command": "cp GrogLibsC/AudioLib/FAudio/build/libFAudio.so.0 ${config:CurrentGameLibs}",
             "group": "none",
             "options": {"cwd": "${workspaceFolder}"},
             "detail": "Copy FAudio lib to game libs directory for testing."
@@ -51,7 +51,7 @@
         {
             "type": "shell",
             "label": "copyDXGI",
-            "command": "cp GrogLibsC/dxvk-native/build/src/dxgi/libdxvk_dxgi.so libs/",
+            "command": "cp GrogLibsC/dxvk-native/build/src/dxgi/libdxvk_dxgi.so ${config:CurrentGameLibs}",
             "group": "none",
             "options": {"cwd": "${workspaceFolder}"},
             "detail": "Copy dxgi lib to game libs directory for testing."
@@ -59,7 +59,7 @@
         {
             "type": "shell",
             "label": "copyD3D11",
-            "command": "cp GrogLibsC/dxvk-native/build/src/d3d11/libdxvk_d3d11.so libs/",
+            "command": "cp GrogLibsC/dxvk-native/build/src/d3d11/libdxvk_d3d11.so ${config:CurrentGameLibs}",
             "group": "none",
             "options": {"cwd": "${workspaceFolder}"},
             "detail": "Copy d3d lib to game libs directory for testing."

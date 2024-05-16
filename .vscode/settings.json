@@ -4,6 +4,7 @@
     "files.associations": {
         "osmain.h": "c",
         "nappgui.h": "c",
-        "buttons.h": "c"
+        "buttons.h": "c",
+        "stringstuff.h": "c"
     }
 }

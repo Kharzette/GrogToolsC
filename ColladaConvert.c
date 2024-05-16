@@ -60,6 +60,11 @@ typedef struct AppContext_t
 	int		mAnimIndex, mMatIndex;
 	float	mAnimTime;
 
+	//gui stuff
+	ListBox	*mpMeshPartLB;
+	ListBox	*mpMaterialLB;
+	ListBox	*mpAnimLB;
+
 	//list of stuff loaded
 	const StringList	*mpAnimList;
 	const StringList	*mpMatList;
@@ -94,6 +99,7 @@ static void EscEH(void *pContext, const SDL_Event *pEvt);
 static void sLoadCharacter(AppContext *pAC, Event *pEvt);
 static void sLoadMaterialLib(AppContext *pAC, Event *pEvt);
 static void sLoadAnimLib(AppContext *pAC, Event *pEvt);
+static void sAssignMaterial(AppContext *pAC, Event *pEvt);
 
 
 static Window	*sCreateWindow(void)
@@ -150,35 +156,28 @@ static AppContext	*sAppCreate(void)
 	Button	*pB1	=button_push();
 	Button	*pB2	=button_push();
 	Button	*pB3	=button_push();
-	Button	*pB4	=button_push();
-	Button	*pB5	=button_push();
-	Button	*pB6	=button_push();
-	Button	*pB7	=button_push();
-	Button	*pB8	=button_push();
 
 	button_text(pB0, "Load Character");
 	button_text(pB1, "Load MatLib");
 	button_text(pB2, "Load AnimLib");
-	button_text(pB3, "Blort3");
-	button_text(pB4, "Blort4");
-	button_text(pB5, "Blort5");
-	button_text(pB6, "Blort6");
-	button_text(pB7, "Blort7");
-	button_text(pB8, "Blort8");
+	button_text(pB3, "<- Assign Material <-");
+
+	pApp->mpMeshPartLB	=listbox_create();
+	pApp->mpMaterialLB	=listbox_create();
+	pApp->mpAnimLB		=listbox_create();
 
 	layout_button(pLay, pB0, 0, 0);
-	layout_button(pLay, pB1, 0, 1);
-	layout_button(pLay, pB2, 0, 2);
-	layout_button(pLay, pB3, 1, 0);
-	layout_button(pLay, pB4, 1, 1);
-	layout_button(pLay, pB5, 1, 2);
-	layout_button(pLay, pB6, 2, 0);
-	layout_button(pLay, pB7, 2, 1);
-	layout_button(pLay, pB8, 2, 2);
+	layout_button(pLay, pB1, 1, 0);
+	layout_button(pLay, pB2, 2, 0);
+	layout_listbox(pLay, pApp->mpMeshPartLB, 0, 1);
+	layout_button(pLay, pB3, 1, 1);
+	layout_listbox(pLay, pApp->mpMaterialLB, 2, 1);
+	layout_listbox(pLay, pApp->mpAnimLB, 0, 2);
 
 	button_OnClick(pB0, listener(pApp, sLoadCharacter, AppContext));
 	button_OnClick(pB1, listener(pApp, sLoadMaterialLib, AppContext));
 	button_OnClick(pB2, listener(pApp, sLoadAnimLib, AppContext));
+	button_OnClick(pB3, listener(pApp, sAssignMaterial, AppContext));
 
 	Panel	*pPanel	=panel_create();
 
@@ -276,15 +275,30 @@ static void sRender(AppContext *pApp, const real64_t prTime, const real64_t cTim
 
 	if(pApp->mpALib != NULL)
 	{
-		int					index	=0;
-		const StringList	*pCur	=SZList_Iterate(pApp->mpAnimList);
-		while(pCur != NULL)
+		int	animCount	=listbox_count(pApp->mpAnimLB);
+		int	selected	=-1;
+		for(int i=0;i < animCount;i++)
 		{
-			if(index == pApp->mAnimIndex)
+			if(listbox_selected(pApp->mpAnimLB, i))
 			{
-				AnimLib_Animate(pApp->mpALib, SZList_IteratorVal(pCur), pApp->mAnimTime);
+				selected	=i;
+				break;
 			}
-			pCur	=SZList_IteratorNext(pCur);
+		}
+
+		if(selected >= 0)
+		{
+			int					index	=0;
+			const StringList	*pCur	=SZList_Iterate(pApp->mpAnimList);
+			while(pCur != NULL)
+			{
+				if(index == selected)
+				{
+					AnimLib_Animate(pApp->mpALib, SZList_IteratorVal(pCur), pApp->mAnimTime);
+				}
+				pCur	=SZList_IteratorNext(pCur);
+				index++;
+			}
 		}
 	}
 
@@ -355,7 +369,7 @@ static void sAppUpdate(AppContext *pApp, const real64_t prTime, const real64_t c
 		osapp_finish();
 	}
 
-	pApp->mAnimTime		+=cTime;
+	pApp->mAnimTime		+=(cTime / 1000.0);
 
 	pApp->mDeltaYaw		=0.0f;
 	pApp->mDeltaPitch	=0.0f;
@@ -647,6 +661,8 @@ static void sLoadCharacter(AppContext *pAC, Event *pEvt)
 
 		DictSZ_Add(&pAC->mpMeshes, SZList_IteratorValUT(pCur), pMesh);
 
+		listbox_add_elem(pAC->mpMeshPartLB, SZList_IteratorVal(pCur), NULL);
+
 		pCur	=SZList_IteratorNext(pCur);
 	}
 }
@@ -666,6 +682,17 @@ static void sLoadMaterialLib(AppContext *pAC, Event *pEvt)
 	pAC->mpMatList	=MatLib_GetMatList(pAC->mpMatLib);
 
 	printf("Material lib loaded...\n");
+
+	const StringList	*pCur	=SZList_Iterate(pAC->mpMatList);
+
+	while(pCur != NULL)
+	{
+		printf("\t%s\n", SZList_IteratorVal(pCur));
+
+		listbox_add_elem(pAC->mpMaterialLB, SZList_IteratorVal(pCur), NULL);
+
+		pCur	=SZList_IteratorNext(pCur);
+	}
 }
 
 static void sLoadAnimLib(AppContext *pAC, Event *pEvt)
@@ -690,6 +717,48 @@ static void sLoadAnimLib(AppContext *pAC, Event *pEvt)
 	{
 		printf("\t%s\n", SZList_IteratorVal(pCur));
 
+		listbox_add_elem(pAC->mpAnimLB, SZList_IteratorVal(pCur), NULL);
+
 		pCur	=SZList_IteratorNext(pCur);
 	}
+}
+
+static void sAssignMaterial(AppContext *pAC, Event *pEvt)
+{
+	unref(pEvt);
+
+	int	matCount	=listbox_count(pAC->mpMaterialLB);
+	int	meshCount	=listbox_count(pAC->mpMeshPartLB);
+
+	int	matSelected	=-1;
+	for(int i=0;i < matCount;i++)
+	{
+		if(listbox_selected(pAC->mpMaterialLB, i))
+		{
+			matSelected	=i;
+			break;
+		}
+	}
+
+	int	meshSelected	=-1;
+	for(int i=0;i < meshCount;i++)
+	{
+		if(listbox_selected(pAC->mpMeshPartLB, i))
+		{
+			meshSelected	=i;
+			break;
+		}
+	}
+
+	if(matSelected == -1 || meshSelected == -1)
+	{
+		return;
+	}
+
+	const char	*szMatSel	=listbox_text(pAC->mpMaterialLB, matSelected);
+	const char	*szMeshSel	=listbox_text(pAC->mpMeshPartLB, meshSelected);
+
+	Character_AssignMaterial(pAC->mpChar, meshSelected, szMatSel);
+
+	printf("Assigned material %s to mesh part %s\n", szMatSel, szMeshSel);
 }
