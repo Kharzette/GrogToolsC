@@ -1,0 +1,9 @@
+{
+	"CurrentGame": "/mnt/SkyFather/Games/CurrentGame",
+	"CurrentGameLibs": "${config:CurrentGame}/libs",
+    "files.associations": {
+        "osmain.h": "c",
+        "nappgui.h": "c",
+        "buttons.h": "c"
+    }
+}

@@ -6,6 +6,7 @@
 #include	"UtilityLib/MiscStuff.h"
 #include	"MaterialLib/StuffKeeper.h"
 #include	"MaterialLib/Material.h"
+#include	"MaterialLib/MaterialLib.h"
 #include	"MaterialLib/CBKeeper.h"
 #include	"MaterialLib/PostProcess.h"
 #include	"MeshLib/AnimLib.h"
@@ -46,6 +47,7 @@ typedef struct AppContext_t
 //	StaticMesh	*mpStatic;
 	Mesh		*mpMesh;
 	Material	*mpCharMat;
+	MaterialLib	*mpMatLib;
 
 	//prims
 	LightRay	*mpLR;
@@ -87,6 +89,7 @@ static void EscEH(void *pContext, const SDL_Event *pEvt);
 
 //button event handlers
 static void sLoadCharacter(AppContext *pAC, Event *pEvt);
+static void sLoadMaterialLib(AppContext *pAC, Event *pEvt);
 
 
 static Window	*sCreateWindow(void)
@@ -150,7 +153,7 @@ static AppContext	*sAppCreate(void)
 	Button	*pB8	=button_push();
 
 	button_text(pB0, "Load Character");
-	button_text(pB1, "Blort1");
+	button_text(pB1, "Load MatLib");
 	button_text(pB2, "Blort2");
 	button_text(pB3, "Blort3");
 	button_text(pB4, "Blort4");
@@ -170,6 +173,7 @@ static AppContext	*sAppCreate(void)
 	layout_button(pLay, pB8, 2, 2);
 
 	button_OnClick(pB0, listener(pApp, sLoadCharacter, AppContext));
+	button_OnClick(pB1, listener(pApp, sLoadMaterialLib, AppContext));
 
 	Panel	*pPanel	=panel_create();
 
@@ -336,6 +340,12 @@ static void sRender(AppContext *pApp, const real64_t prTime, const real64_t cTim
 
 static void sAppUpdate(AppContext *pApp, const real64_t prTime, const real64_t cTime)
 {
+	if(pApp == NULL)
+	{
+		//init not finished
+		return;
+	}
+	
 	if(!pApp->mbRunning)
 	{
 		osapp_finish();
@@ -601,11 +611,9 @@ static void	EscEH(void *pContext, const SDL_Event *pEvt)
 
 static void sLoadCharacter(AppContext *pAC, Event *pEvt)
 {
-	printf("sLoadCharacter!\n");
-
 	unref(pEvt);
 
-	const char	*fTypes[]	={	"character", "Character"	};
+	const char	*fTypes[]	={	"Character", "character"	};
 
 	const char	*pFileName	=comwin_open_file(pAC->mpWnd, fTypes, 2, NULL);
 
@@ -614,4 +622,19 @@ static void sLoadCharacter(AppContext *pAC, Event *pEvt)
 	pAC->mpChar	=Character_Read(pFileName);
 
 	printf("Character loaded...\n");
+}
+
+static void sLoadMaterialLib(AppContext *pAC, Event *pEvt)
+{
+	unref(pEvt);
+
+	const char	*fTypes[]	={	"MatLib", "Matlib", "matlib"	};
+
+	const char	*pFileName	=comwin_open_file(pAC->mpWnd, fTypes, 3, NULL);
+
+	printf("FileName: %s\n", pFileName);
+
+	pAC->mpMatLib	=MatLib_Read(pFileName, pAC->mpSK);
+
+	printf("Material lib loaded...\n");
 }
