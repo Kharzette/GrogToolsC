@@ -1,4 +1,3 @@
-//annoying warning
 #include    <nappgui.h>
 #include	<d3d11_1.h>
 #include	"UtilityLib/GraphicsDevice.h"
@@ -32,7 +31,7 @@
 typedef struct AppContext_t
 {
 	Window	*mpWnd;
-	Layout	*mpLay;
+	Window	*mpMatWnd;
 
 	GraphicsDevice	*mpGD;
 	GameCamera		*mpCam;
@@ -64,6 +63,8 @@ typedef struct AppContext_t
 	ListBox	*mpMeshPartLB;
 	ListBox	*mpMaterialLB;
 	ListBox	*mpAnimLB;
+	Combo	*mpVSCB;	//combo noodle!
+	Combo	*mpPSCB;
 
 	//list of stuff loaded
 	const StringList	*mpAnimList;
@@ -138,6 +139,94 @@ static void sOnClose(AppContext *pApp, Event *e)
 	}
 }
 
+static void	sCreateMatWindow(AppContext *pApp)
+{
+	//material window
+	//edits what is currently selected in MaterialLB
+	//don't really want a resizable, but have to set this
+	//to set any size at all
+	pApp->mpMatWnd	=window_create(ekWINDOW_TITLE | ekWINDOW_RESIZE);
+	
+	window_title(pApp->mpMatWnd, "Material");
+
+	//eventually want this to tag alongside the main window
+	window_origin(pApp->mpMatWnd, v2df(100.f, 200.f));
+
+	//material should edit:
+	//trilight values, solid colour, spec color and power
+	//srv0 and 1, vert and pixel shader
+	Layout	*pLay	=layout_create(5, 6);
+	layout_margin(pLay, 10);
+
+	//color buttons
+	Button	*pTL0	=button_push();
+	Button	*pTL1	=button_push();
+	Button	*pTL2	=button_push();
+	Button	*pSolC	=button_push();
+	Button	*pSPC	=button_push();
+
+	//create a white block image
+	byte_t	block[32 * 32];
+	memset(block, 255, 32 * 32);
+
+	pixformat_t	fmt	=ekGRAY8;
+	Image	*pBlock	=image_from_pixels(32, 32, fmt, block, NULL, 0);
+
+	button_image(pTL0, pBlock);
+	button_image(pTL1, pBlock);
+	button_image(pTL2, pBlock);
+	button_image(pSolC, pBlock);
+	button_image(pSPC, pBlock);
+
+	//spec power
+	Slider	*pSPow		=slider_create();
+	Label	*pSPowL		=label_create();
+	Label	*pSPowVal	=label_create();
+
+	button_text(pTL0, "Trilight 0");
+	button_text(pTL1, "Trilight 1");
+	button_text(pTL2, "Trilight 2");
+
+	button_text(pSolC, "Solid Colour");
+	button_text(pSPC, "Spec Colour");
+
+	label_text(pSPowL, "Spec Power");
+	label_text(pSPowVal, "5");
+
+	//shaders
+	pApp->mpVSCB	=combo_create();
+	pApp->mpPSCB	=combo_create();
+
+	//shader combos at the top
+	layout_combo(pLay, pApp->mpVSCB, 0, 0);
+	layout_combo(pLay, pApp->mpPSCB, 1, 0);
+
+	//trilight below on the left
+	layout_button(pLay, pTL0, 0, 1);
+	layout_button(pLay, pTL1, 0, 2);
+	layout_button(pLay, pTL2, 0, 3);
+
+	//solid spec
+	layout_button(pLay, pSolC, 1, 1);
+	layout_button(pLay, pSPC, 1, 2);
+	layout_label(pLay, pSPowL, 2, 1);
+	layout_slider(pLay, pSPow, 3, 1);
+	layout_label(pLay, pSPowVal, 4, 1);
+
+	//right align the spec power label
+	layout_halign(pLay, 2, 1, ekRIGHT);
+
+	Panel	*pPanel	=panel_create();
+
+	panel_layout(pPanel, pLay);
+
+	window_panel(pApp->mpMatWnd, pPanel);
+
+	window_size(pApp->mpMatWnd, s2df(800, 300));
+
+	window_show(pApp->mpMatWnd);
+}
+
 static AppContext	*sAppCreate(void)
 {
 	AppContext	*pApp	=heap_new0(AppContext);
@@ -186,6 +275,8 @@ static AppContext	*sAppCreate(void)
 	window_panel(pApp->mpWnd, pPanel);
 
 	window_size(pApp->mpWnd, s2df(800, 600));
+
+	sCreateMatWindow(pApp);
 
 	//null loadable meshes
 	pApp->mpChar	=NULL;
