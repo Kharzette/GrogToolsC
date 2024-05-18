@@ -68,6 +68,7 @@ typedef struct AppContext_t
 	PopUp	*mpVSPop;
 	PopUp	*mpPSPop;
 	Label	*mpPowVal;		//set by the slider
+	color_t	mChosen;		//returned from color dialog
 
 	//list of stuff loaded
 	const StringList	*mpAnimList;
@@ -106,6 +107,7 @@ static void sLoadAnimLib(AppContext *pAC, Event *pEvt);
 static void sAssignMaterial(AppContext *pAC, Event *pEvt);
 static void sShaderFileChanged(AppContext *pAC, Event *pEvt);
 static void sSPowChanged(AppContext *pAC, Event *pEvt);
+static void	sColourButtonClicked(AppContext *pAC, Event *pEvt);
 
 
 static Window	*sCreateWindow(void)
@@ -269,6 +271,11 @@ static void	sCreateMatWindow(AppContext *pApp)
 	//events
 	popup_OnSelect(pApp->mpShaderFile, listener(pApp, sShaderFileChanged, AppContext));
 	slider_OnMoved(pSPow, listener(pApp, sSPowChanged, AppContext));
+	button_OnClick(pTL0, listener(pApp, sColourButtonClicked, AppContext));
+	button_OnClick(pTL1, listener(pApp, sColourButtonClicked, AppContext));
+	button_OnClick(pTL2, listener(pApp, sColourButtonClicked, AppContext));
+	button_OnClick(pSolC, listener(pApp, sColourButtonClicked, AppContext));
+	button_OnClick(pSPC, listener(pApp, sColourButtonClicked, AppContext));
 
 	Panel	*pPanel	=panel_create();
 
@@ -938,4 +945,38 @@ static void sSPowChanged(AppContext *pAC, Event *pEvt)
 	sprintf(val, "%d", (int)newPow);
 
 	label_text(pAC->mpPowVal, val);
+}
+
+static void sColourChosen(AppContext *pAC, Event *pEvt)
+{
+	color_t	*pCol	=event_params(pEvt, color_t);
+
+	pAC->mChosen	=*pCol;
+}
+
+static void sColourButtonClicked(AppContext *pAC, Event *pEvt)
+{
+	const EvButton	*pBtn	=event_params(pEvt, EvButton);
+
+	comwin_color(pAC->mpWnd, "Choose Colour", 100, 50, ekRIGHT, ekTOP, kCOLOR_WHITE, NULL, 0, listener(pAC, sColourChosen, AppContext));
+
+	GuiControl	*pCur	=window_get_focus(pAC->mpMatWnd);
+
+	Button	*pButn	=guicontrol_button(pCur);
+	if(pButn == NULL)
+	{
+		return;
+	}
+
+	//create a white block image
+	uint32_t	block[32 * 32];
+	for(int i=0;i < (32 * 32);i++)
+	{
+		block[i]	=pAC->mChosen;
+	}
+
+	pixformat_t	fmt	=ekRGBA32;
+	Image	*pBlock	=image_from_pixels(32, 32, fmt, (byte_t *)block, NULL, 0);
+
+	button_image(pButn, pBlock);
 }
