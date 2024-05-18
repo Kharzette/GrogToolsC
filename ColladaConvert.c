@@ -25,6 +25,7 @@
 #define	KEYTURN_RATE	0.01f
 #define	MOVE_RATE		0.1f
 #define	MOUSE_TO_ANG	0.001f
+#define	POW_SLIDER_MAX	100
 
 //this gets passed into events and such
 //will likely grow
@@ -66,6 +67,7 @@ typedef struct AppContext_t
 	PopUp	*mpShaderFile;	//stat/char/bsp etc
 	PopUp	*mpVSPop;
 	PopUp	*mpPSPop;
+	Label	*mpPowVal;		//set by the slider
 
 	//list of stuff loaded
 	const StringList	*mpAnimList;
@@ -103,6 +105,7 @@ static void sLoadMaterialLib(AppContext *pAC, Event *pEvt);
 static void sLoadAnimLib(AppContext *pAC, Event *pEvt);
 static void sAssignMaterial(AppContext *pAC, Event *pEvt);
 static void sShaderFileChanged(AppContext *pAC, Event *pEvt);
+static void sSPowChanged(AppContext *pAC, Event *pEvt);
 
 
 static Window	*sCreateWindow(void)
@@ -216,9 +219,9 @@ static void	sCreateMatWindow(AppContext *pApp)
 	button_image(pSPC, pBlock);
 
 	//spec power
-	Slider	*pSPow		=slider_create();
-	Label	*pSPowL		=label_create();
-	Label	*pSPowVal	=label_create();
+	Slider	*pSPow	=slider_create();
+	Label	*pSPowL	=label_create();
+	pApp->mpPowVal	=label_create();
 
 	button_text(pTL0, "Trilight 0");
 	button_text(pTL1, "Trilight 1");
@@ -228,10 +231,10 @@ static void	sCreateMatWindow(AppContext *pApp)
 	button_text(pSPC, "Spec Colour");
 
 	label_text(pSPowL, "Spec Power");
-	label_text(pSPowVal, "5");
+	label_text(pApp->mpPowVal, "0");
 
 	//for size calculation
-	label_size_text(pSPowVal, "100");
+	label_size_text(pApp->mpPowVal, "100");
 
 	//shaders
 	pApp->mpShaderFile	=popup_create();
@@ -242,8 +245,6 @@ static void	sCreateMatWindow(AppContext *pApp)
 	popup_add_elem(pApp->mpShaderFile, "Character", NULL);
 	popup_add_elem(pApp->mpShaderFile, "Static", NULL);
 	popup_add_elem(pApp->mpShaderFile, "BSP", NULL);
-
-	popup_OnSelect(pApp->mpShaderFile, listener(pApp, sShaderFileChanged, AppContext));
 
 	//shader combos at the top
 	layout_popup(pLay, pApp->mpShaderFile, 0, 0);
@@ -260,10 +261,14 @@ static void	sCreateMatWindow(AppContext *pApp)
 	layout_button(pLay, pSPC, 1, 2);
 	layout_label(pLay, pSPowL, 2, 1);
 	layout_slider(pLay, pSPow, 3, 1);
-	layout_label(pLay, pSPowVal, 4, 1);
+	layout_label(pLay, pApp->mpPowVal, 4, 1);
 
 	//right align the spec power label
 	layout_halign(pLay, 2, 1, ekRIGHT);
+
+	//events
+	popup_OnSelect(pApp->mpShaderFile, listener(pApp, sShaderFileChanged, AppContext));
+	slider_OnMoved(pSPow, listener(pApp, sSPowChanged, AppContext));
 
 	Panel	*pPanel	=panel_create();
 
@@ -920,4 +925,17 @@ static void sShaderFileChanged(AppContext *pAC, Event *pEvt)
 	sFillShaderPopups(pAC, pSZFile);
 
 	utstring_done(pSZFile);
+}
+
+static void sSPowChanged(AppContext *pAC, Event *pEvt)
+{
+	const EvSlider	*pSlide	=event_params(pEvt, EvSlider);
+
+	float	newPow	=pSlide->pos * POW_SLIDER_MAX;
+
+	char	val[6];
+
+	sprintf(val, "%d", (int)newPow);
+
+	label_text(pAC->mpPowVal, val);
 }
