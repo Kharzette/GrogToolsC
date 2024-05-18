@@ -63,8 +63,9 @@ typedef struct AppContext_t
 	ListBox	*mpMeshPartLB;
 	ListBox	*mpMaterialLB;
 	ListBox	*mpAnimLB;
-	Combo	*mpVSCB;	//combo noodle!
-	Combo	*mpPSCB;
+	PopUp	*mpShaderFile;	//stat/char/bsp etc
+	PopUp	*mpVSPop;
+	PopUp	*mpPSPop;
 
 	//list of stuff loaded
 	const StringList	*mpAnimList;
@@ -101,6 +102,7 @@ static void sLoadCharacter(AppContext *pAC, Event *pEvt);
 static void sLoadMaterialLib(AppContext *pAC, Event *pEvt);
 static void sLoadAnimLib(AppContext *pAC, Event *pEvt);
 static void sAssignMaterial(AppContext *pAC, Event *pEvt);
+static void sShaderFileChanged(AppContext *pAC, Event *pEvt);
 
 
 static Window	*sCreateWindow(void)
@@ -136,6 +138,41 @@ static void sOnClose(AppContext *pApp, Event *e)
 		
 		case ekGUI_CLOSE_DEACT:
 			cassert_default();
+	}
+}
+
+static void sFillShaderPopups(AppContext *pApp, const UT_string *szFile)
+{
+	//clear both
+	popup_clear(pApp->mpVSPop);
+	popup_clear(pApp->mpPSPop);
+
+	const StringList	*szList	=StuffKeeper_GetVSEntryList(pApp->mpSK, szFile);
+
+	const StringList	*pCur	=SZList_Iterate(szList);
+	while(pCur != NULL)
+	{
+		popup_add_elem(pApp->mpVSPop, SZList_IteratorVal(pCur), NULL);
+		pCur	=SZList_IteratorNext(pCur);
+	}
+
+	szList	=StuffKeeper_GetPSEntryList(pApp->mpSK, szFile);
+	if(szList == NULL)
+	{
+		UT_string	*tri;
+		utstring_new(tri);
+		utstring_printf(tri, "Trilight");
+
+		//pixel shaders use trilight file alot
+		szList	=StuffKeeper_GetPSEntryList(pApp->mpSK, tri);
+		utstring_done(tri);
+	}
+
+	pCur	=SZList_Iterate(szList);
+	while(pCur != NULL)
+	{
+		popup_add_elem(pApp->mpPSPop, SZList_IteratorVal(pCur), NULL);
+		pCur	=SZList_IteratorNext(pCur);
 	}
 }
 
@@ -193,13 +230,25 @@ static void	sCreateMatWindow(AppContext *pApp)
 	label_text(pSPowL, "Spec Power");
 	label_text(pSPowVal, "5");
 
+	//for size calculation
+	label_size_text(pSPowVal, "100");
+
 	//shaders
-	pApp->mpVSCB	=combo_create();
-	pApp->mpPSCB	=combo_create();
+	pApp->mpShaderFile	=popup_create();
+	pApp->mpVSPop		=popup_create();
+	pApp->mpPSPop		=popup_create();
+
+	//shaderfiles
+	popup_add_elem(pApp->mpShaderFile, "Character", NULL);
+	popup_add_elem(pApp->mpShaderFile, "Static", NULL);
+	popup_add_elem(pApp->mpShaderFile, "BSP", NULL);
+
+	popup_OnSelect(pApp->mpShaderFile, listener(pApp, sShaderFileChanged, AppContext));
 
 	//shader combos at the top
-	layout_combo(pLay, pApp->mpVSCB, 0, 0);
-	layout_combo(pLay, pApp->mpPSCB, 1, 0);
+	layout_popup(pLay, pApp->mpShaderFile, 0, 0);
+	layout_popup(pLay, pApp->mpVSPop, 1, 0);
+	layout_popup(pLay, pApp->mpPSPop, 2, 0);
 
 	//trilight below on the left
 	layout_button(pLay, pTL0, 0, 1);
@@ -297,6 +346,9 @@ static AppContext	*sAppCreate(void)
 		heap_free((uint8_t **)&pApp, sizeof(AppContext), NULL);
 		return	NULL;
 	}
+
+	//manually call event to fill boxes
+	sShaderFileChanged(pApp, NULL);
 
 	//test prims
 	pApp->mpLR		=CP_CreateLightRay(5.0f, 0.25f, pApp->mpGD, pApp->mpSK);
@@ -852,4 +904,20 @@ static void sAssignMaterial(AppContext *pAC, Event *pEvt)
 	Character_AssignMaterial(pAC->mpChar, meshSelected, szMatSel);
 
 	printf("Assigned material %s to mesh part %s\n", szMatSel, szMeshSel);
+}
+
+static void sShaderFileChanged(AppContext *pAC, Event *pEvt)
+{
+	unref(pEvt);
+
+	uint32_t	seld	=popup_get_selected(pAC->mpShaderFile);
+
+	UT_string	*pSZFile;
+	utstring_new(pSZFile);
+
+	utstring_printf(pSZFile, "%s", popup_get_text(pAC->mpShaderFile, seld));
+
+	sFillShaderPopups(pAC, pSZFile);
+
+	utstring_done(pSZFile);
 }
