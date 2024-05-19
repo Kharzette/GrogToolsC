@@ -70,6 +70,10 @@ typedef struct AppContext_t
 	Label	*mpPowVal;		//set by the slider
 	color_t	mChosen;		//returned from color dialog
 
+	//material form controls
+	Button	*mpTL0, *mpTL1, *mpTL2;
+	Button	*mpSolid, *mpSpec;
+
 	//list of stuff loaded
 	const StringList	*mpAnimList;
 	const StringList	*mpMatList;
@@ -78,8 +82,10 @@ typedef struct AppContext_t
 }  AppContext;
 
 //static forward decs
-static void	SetupKeyBinds(Input *pInp);
-static void	SetupRastVP(GraphicsDevice *pGD);
+static void			SetupKeyBinds(Input *pInp);
+static void			SetupRastVP(GraphicsDevice *pGD);
+static const Image	*sMakeSmallVColourBox(vec3 colour);
+static const Image	*sMakeSmallColourBox(color_t colour);
 
 //input event handlers
 static void	RandLightEH(void *pContext, const SDL_Event *pEvt);
@@ -108,6 +114,7 @@ static void sAssignMaterial(AppContext *pAC, Event *pEvt);
 static void sShaderFileChanged(AppContext *pAC, Event *pEvt);
 static void sSPowChanged(AppContext *pAC, Event *pEvt);
 static void	sColourButtonClicked(AppContext *pAC, Event *pEvt);
+static void sMatSelectionChanged(AppContext *pAC, Event *pEvt);
 
 
 static Window	*sCreateWindow(void)
@@ -201,36 +208,31 @@ static void	sCreateMatWindow(AppContext *pApp)
 	layout_margin(pLay, 10);
 
 	//color buttons
-	Button	*pTL0	=button_push();
-	Button	*pTL1	=button_push();
-	Button	*pTL2	=button_push();
-	Button	*pSolC	=button_push();
-	Button	*pSPC	=button_push();
+	pApp->mpTL0		=button_push();
+	pApp->mpTL1		=button_push();
+	pApp->mpTL2		=button_push();
+	pApp->mpSolid	=button_push();
+	pApp->mpSpec	=button_push();
 
-	//create a white block image
-	byte_t	block[32 * 32];
-	memset(block, 255, 32 * 32);
+	const Image	*pBlock	=sMakeSmallVColourBox(GLM_VEC3_ONE);
 
-	pixformat_t	fmt	=ekGRAY8;
-	Image	*pBlock	=image_from_pixels(32, 32, fmt, block, NULL, 0);
-
-	button_image(pTL0, pBlock);
-	button_image(pTL1, pBlock);
-	button_image(pTL2, pBlock);
-	button_image(pSolC, pBlock);
-	button_image(pSPC, pBlock);
+	button_image(pApp->mpTL0, pBlock);
+	button_image(pApp->mpTL1, pBlock);
+	button_image(pApp->mpTL2, pBlock);
+	button_image(pApp->mpSolid, pBlock);
+	button_image(pApp->mpSpec, pBlock);
 
 	//spec power
 	Slider	*pSPow	=slider_create();
 	Label	*pSPowL	=label_create();
 	pApp->mpPowVal	=label_create();
 
-	button_text(pTL0, "Trilight 0");
-	button_text(pTL1, "Trilight 1");
-	button_text(pTL2, "Trilight 2");
+	button_text(pApp->mpTL0, "Trilight 0");
+	button_text(pApp->mpTL1, "Trilight 1");
+	button_text(pApp->mpTL2, "Trilight 2");
 
-	button_text(pSolC, "Solid Colour");
-	button_text(pSPC, "Spec Colour");
+	button_text(pApp->mpSolid, "Solid Colour");
+	button_text(pApp->mpSpec, "Spec Colour");
 
 	label_text(pSPowL, "Spec Power");
 	label_text(pApp->mpPowVal, "0");
@@ -254,13 +256,13 @@ static void	sCreateMatWindow(AppContext *pApp)
 	layout_popup(pLay, pApp->mpPSPop, 2, 0);
 
 	//trilight below on the left
-	layout_button(pLay, pTL0, 0, 1);
-	layout_button(pLay, pTL1, 0, 2);
-	layout_button(pLay, pTL2, 0, 3);
+	layout_button(pLay, pApp->mpTL0, 0, 1);
+	layout_button(pLay, pApp->mpTL1, 0, 2);
+	layout_button(pLay, pApp->mpTL2, 0, 3);
 
 	//solid spec
-	layout_button(pLay, pSolC, 1, 1);
-	layout_button(pLay, pSPC, 1, 2);
+	layout_button(pLay, pApp->mpSolid, 1, 1);
+	layout_button(pLay, pApp->mpSpec, 1, 2);
 	layout_label(pLay, pSPowL, 2, 1);
 	layout_slider(pLay, pSPow, 3, 1);
 	layout_label(pLay, pApp->mpPowVal, 4, 1);
@@ -271,11 +273,11 @@ static void	sCreateMatWindow(AppContext *pApp)
 	//events
 	popup_OnSelect(pApp->mpShaderFile, listener(pApp, sShaderFileChanged, AppContext));
 	slider_OnMoved(pSPow, listener(pApp, sSPowChanged, AppContext));
-	button_OnClick(pTL0, listener(pApp, sColourButtonClicked, AppContext));
-	button_OnClick(pTL1, listener(pApp, sColourButtonClicked, AppContext));
-	button_OnClick(pTL2, listener(pApp, sColourButtonClicked, AppContext));
-	button_OnClick(pSolC, listener(pApp, sColourButtonClicked, AppContext));
-	button_OnClick(pSPC, listener(pApp, sColourButtonClicked, AppContext));
+	button_OnClick(pApp->mpTL0, listener(pApp, sColourButtonClicked, AppContext));
+	button_OnClick(pApp->mpTL1, listener(pApp, sColourButtonClicked, AppContext));
+	button_OnClick(pApp->mpTL2, listener(pApp, sColourButtonClicked, AppContext));
+	button_OnClick(pApp->mpSolid, listener(pApp, sColourButtonClicked, AppContext));
+	button_OnClick(pApp->mpSpec, listener(pApp, sColourButtonClicked, AppContext));
 
 	Panel	*pPanel	=panel_create();
 
@@ -328,6 +330,7 @@ static AppContext	*sAppCreate(void)
 	button_OnClick(pB1, listener(pApp, sLoadMaterialLib, AppContext));
 	button_OnClick(pB2, listener(pApp, sLoadAnimLib, AppContext));
 	button_OnClick(pB3, listener(pApp, sAssignMaterial, AppContext));
+	listbox_OnSelect(pApp->mpMaterialLB, listener(pApp, sMatSelectionChanged, AppContext));
 
 	Panel	*pPanel	=panel_create();
 
@@ -832,6 +835,11 @@ static void sLoadMaterialLib(AppContext *pAC, Event *pEvt)
 
 	printf("FileName: %s\n", pFileName);
 
+	if(pFileName == NULL)
+	{
+		return;
+	}
+
 	pAC->mpMatLib	=MatLib_Read(pFileName, pAC->mpSK);
 
 	pAC->mpMatList	=MatLib_GetMatList(pAC->mpMatLib);
@@ -956,6 +964,7 @@ static void sColourChosen(AppContext *pAC, Event *pEvt)
 
 static void sColourButtonClicked(AppContext *pAC, Event *pEvt)
 {
+	__attribute_maybe_unused__
 	const EvButton	*pBtn	=event_params(pEvt, EvButton);
 
 	comwin_color(pAC->mpWnd, "Choose Colour", 100, 50, ekRIGHT, ekTOP, kCOLOR_WHITE, NULL, 0, listener(pAC, sColourChosen, AppContext));
@@ -968,15 +977,69 @@ static void sColourButtonClicked(AppContext *pAC, Event *pEvt)
 		return;
 	}
 
-	//create a white block image
+	button_image(pButn, sMakeSmallColourBox(pAC->mChosen));
+}
+
+static void	sFillMaterialFormValues(AppContext *pApp, const char *szMaterial)
+{
+	if(pApp == NULL || szMaterial == NULL || pApp->mpMatLib == NULL)
+	{
+		printf("Not ready for material form fill\n");
+		return;
+	}
+
+	const Material	*pMat	=MatLib_GetConstMaterial(pApp->mpMatLib, szMaterial);
+
+	vec3	t0, t1, t2;
+	MAT_GetTrilight(pMat, t0, t1, t2);
+	button_image(pApp->mpTL0, sMakeSmallVColourBox(t0));
+	button_image(pApp->mpTL1, sMakeSmallVColourBox(t1));
+	button_image(pApp->mpTL2, sMakeSmallVColourBox(t2));
+}
+
+static void sMatSelectionChanged(AppContext *pAC, Event *pEvt)
+{
+	unref(pEvt);
+
+	int	matCount	=listbox_count(pAC->mpMaterialLB);
+	int	matSelected	=-1;
+	int	numSelected	=0;
+	for(int i=0;i < matCount;i++)
+	{
+		if(listbox_selected(pAC->mpMaterialLB, i))
+		{
+			matSelected	=i;
+			numSelected++;
+			break;
+		}
+	}
+
+	if(numSelected != 1)
+	{
+		return;
+	}
+
+	const char	*szMatSel	=listbox_text(pAC->mpMaterialLB, matSelected);
+
+	sFillMaterialFormValues(pAC, szMatSel);
+}
+
+static const Image	*sMakeSmallVColourBox(vec3 colour)
+{
+	return	sMakeSmallColourBox(Misc_SSE_Vec3ToRGBA(colour));
+}
+
+static const Image	*sMakeSmallColourBox(color_t colour)
+{
+	//create a block image
 	uint32_t	block[32 * 32];
 	for(int i=0;i < (32 * 32);i++)
 	{
-		block[i]	=pAC->mChosen;
+		block[i]	=colour;
 	}
 
 	pixformat_t	fmt	=ekRGBA32;
 	Image	*pBlock	=image_from_pixels(32, 32, fmt, (byte_t *)block, NULL, 0);
 
-	button_image(pButn, pBlock);
+	return	pBlock;
 }

@@ -6,3 +6,5 @@ x	Change color box on buttons to picked color
 	modify material when material form stuff changes
 	SRV0 and 1 images
 	Texture list when click srv
+	Create new material somehow?
+	Maybe select material when mesh part is selected (if mat exists)
