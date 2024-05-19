@@ -73,6 +73,7 @@ typedef struct AppContext_t
 	//material form controls
 	Button	*mpTL0, *mpTL1, *mpTL2;
 	Button	*mpSolid, *mpSpec;
+	Slider	*mpSPow;
 
 	//list of stuff loaded
 	const StringList	*mpAnimList;
@@ -223,7 +224,7 @@ static void	sCreateMatWindow(AppContext *pApp)
 	button_image(pApp->mpSpec, pBlock);
 
 	//spec power
-	Slider	*pSPow	=slider_create();
+	pApp->mpSPow	=slider_create();
 	Label	*pSPowL	=label_create();
 	pApp->mpPowVal	=label_create();
 
@@ -264,7 +265,7 @@ static void	sCreateMatWindow(AppContext *pApp)
 	layout_button(pLay, pApp->mpSolid, 1, 1);
 	layout_button(pLay, pApp->mpSpec, 1, 2);
 	layout_label(pLay, pSPowL, 2, 1);
-	layout_slider(pLay, pSPow, 3, 1);
+	layout_slider(pLay, pApp->mpSPow, 3, 1);
 	layout_label(pLay, pApp->mpPowVal, 4, 1);
 
 	//right align the spec power label
@@ -272,7 +273,7 @@ static void	sCreateMatWindow(AppContext *pApp)
 
 	//events
 	popup_OnSelect(pApp->mpShaderFile, listener(pApp, sShaderFileChanged, AppContext));
-	slider_OnMoved(pSPow, listener(pApp, sSPowChanged, AppContext));
+	slider_OnMoved(pApp->mpSPow, listener(pApp, sSPowChanged, AppContext));
 	button_OnClick(pApp->mpTL0, listener(pApp, sColourButtonClicked, AppContext));
 	button_OnClick(pApp->mpTL1, listener(pApp, sColourButtonClicked, AppContext));
 	button_OnClick(pApp->mpTL2, listener(pApp, sColourButtonClicked, AppContext));
@@ -980,6 +981,24 @@ static void sColourButtonClicked(AppContext *pAC, Event *pEvt)
 	button_image(pButn, sMakeSmallColourBox(pAC->mChosen));
 }
 
+static bool	SelectPopupItem(PopUp *pPop, const char *pSZ)
+{
+	int	cnt	=popup_count(pPop);
+
+	for(int i=0;i < cnt;i++)
+	{
+		const char	*pItemTxt	=popup_get_text(pPop, i);
+
+		int	result	=strcmp(pItemTxt, pSZ);
+		if(result == 0)
+		{
+			popup_selected(pPop, i);
+			return	true;
+		}
+	}
+	return	false;
+}
+
 static void	sFillMaterialFormValues(AppContext *pApp, const char *szMaterial)
 {
 	if(pApp == NULL || szMaterial == NULL || pApp->mpMatLib == NULL)
@@ -995,6 +1014,28 @@ static void	sFillMaterialFormValues(AppContext *pApp, const char *szMaterial)
 	button_image(pApp->mpTL0, sMakeSmallVColourBox(t0));
 	button_image(pApp->mpTL1, sMakeSmallVColourBox(t1));
 	button_image(pApp->mpTL2, sMakeSmallVColourBox(t2));
+
+	vec4	sc;
+	MAT_GetSolidColour(pMat, sc);
+	button_image(pApp->mpSolid, sMakeSmallVColourBox(sc));
+
+	vec4	spec;
+	MAT_GetSpecular(pMat, spec);
+	button_image(pApp->mpSpec, sMakeSmallVColourBox(spec));
+	slider_value(pApp->mpSPow, (spec[3]) / (real32_t)POW_SLIDER_MAX);
+
+	char	val[6];
+	sprintf(val, "%d", (int)spec[3]);
+	label_text(pApp->mpPowVal, val);
+
+	const ID3D11VertexShader	*pVS	=MAT_GetVShader(pMat);
+	const ID3D11PixelShader		*pPS	=MAT_GetPShader(pMat);
+
+	const UT_string	*pVSName	=StuffKeeper_GetVSName(pApp->mpSK, pVS);
+	const UT_string	*pPSName	=StuffKeeper_GetPSName(pApp->mpSK, pPS);
+
+	SelectPopupItem(pApp->mpVSPop, utstring_body(pVSName));
+	SelectPopupItem(pApp->mpPSPop, utstring_body(pPSName));
 }
 
 static void sMatSelectionChanged(AppContext *pAC, Event *pEvt)

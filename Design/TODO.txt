@@ -1,7 +1,7 @@
 x	Spec power val update with slider
 x	Pop out color picker on click color buttons
 x	Change color box on buttons to picked color
-	Change all elements to material selected
+x	Change all elements to material selected
 	Open material form when mat selected
 	modify material when material form stuff changes
 	SRV0 and 1 images
