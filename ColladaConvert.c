@@ -61,14 +61,16 @@ typedef struct AppContext_t
 	float	mAnimTime;
 
 	//gui stuff
-	ListBox	*mpMeshPartLB;
-	ListBox	*mpMaterialLB;
-	ListBox	*mpAnimLB;
-	PopUp	*mpShaderFile;	//stat/char/bsp etc
-	PopUp	*mpVSPop;
-	PopUp	*mpPSPop;
-	Label	*mpPowVal;		//set by the slider
-	color_t	mChosen;		//returned from color dialog
+	ListBox		*mpMeshPartLB;
+	ListBox		*mpMaterialLB;
+	ListBox		*mpAnimLB;
+	PopUp		*mpShaderFile;	//stat/char/bsp etc
+	PopUp		*mpVSPop;
+	PopUp		*mpPSPop;
+	Label		*mpPowVal;		//set by the slider
+	color_t		mChosen;		//returned from color dialog
+	ImageView	*mpSRV0;
+	ImageView	*mpSRV1;
 
 	//material form controls
 	Button	*mpTL0, *mpTL1, *mpTL2;
@@ -92,6 +94,7 @@ static const char		*sGetSelectedMaterialName(AppContext *pApp);
 static const Material	*sGetSelectedConstMaterial(AppContext *pApp);
 static Material			*sGetSelectedMaterial(AppContext *pApp);
 static void				sUpdateSelectedMaterial(AppContext *pApp);
+static const Image		*sCreateTexImage(const UT_string *szTex);
 
 //input event handlers
 static void	RandLightEH(void *pContext, const SDL_Event *pEvt);
@@ -122,6 +125,8 @@ static void sShaderChanged(AppContext *pAC, Event *pEvt);
 static void sSPowChanged(AppContext *pAC, Event *pEvt);
 static void	sColourButtonClicked(AppContext *pAC, Event *pEvt);
 static void sMatSelectionChanged(AppContext *pAC, Event *pEvt);
+static void	sSRV0Clicked(AppContext *pAC, Event *pEvt);
+static void	sSRV1Clicked(AppContext *pAC, Event *pEvt);
 
 
 static Window	*sCreateWindow(void)
@@ -257,6 +262,14 @@ static void	sCreateMatWindow(AppContext *pApp)
 	popup_add_elem(pApp->mpShaderFile, "Static", NULL);
 	popup_add_elem(pApp->mpShaderFile, "BSP", NULL);
 
+	//SRV images
+	pApp->mpSRV0	=imageview_create();
+	pApp->mpSRV1	=imageview_create();
+	imageview_scale(pApp->mpSRV0, ekGUI_SCALE_ASPECTDW);
+	imageview_scale(pApp->mpSRV1, ekGUI_SCALE_ASPECTDW);
+	imageview_size(pApp->mpSRV0, s2di(64, 64));
+	imageview_size(pApp->mpSRV1, s2di(64, 64));
+
 	//shader combos at the top
 	layout_popup(pLay, pApp->mpShaderFile, 0, 0);
 	layout_popup(pLay, pApp->mpVSPop, 1, 0);
@@ -272,10 +285,14 @@ static void	sCreateMatWindow(AppContext *pApp)
 	layout_button(pLay, pApp->mpSpec, 1, 2);
 	layout_label(pLay, pSPowL, 2, 1);
 	layout_slider(pLay, pApp->mpSPow, 3, 1);
-	layout_label(pLay, pApp->mpPowVal, 4, 1);
+	layout_label(pLay, pApp->mpPowVal, 4, 1);	
 
 	//right align the spec power label
 	layout_halign(pLay, 2, 1, ekRIGHT);
+
+	//images
+	layout_imageview(pLay, pApp->mpSRV0, 3, 2);
+	layout_imageview(pLay, pApp->mpSRV1, 3, 3);
 
 	//events
 	popup_OnSelect(pApp->mpShaderFile, listener(pApp, sShaderFileChanged, AppContext));
@@ -287,6 +304,8 @@ static void	sCreateMatWindow(AppContext *pApp)
 	button_OnClick(pApp->mpTL2, listener(pApp, sColourButtonClicked, AppContext));
 	button_OnClick(pApp->mpSolid, listener(pApp, sColourButtonClicked, AppContext));
 	button_OnClick(pApp->mpSpec, listener(pApp, sColourButtonClicked, AppContext));
+	imageview_OnClick(pApp->mpSRV0, listener(pApp, sSRV0Clicked, AppContext));
+	imageview_OnClick(pApp->mpSRV1, listener(pApp, sSRV1Clicked, AppContext));
 
 	Panel	*pPanel	=panel_create();
 
@@ -295,8 +314,6 @@ static void	sCreateMatWindow(AppContext *pApp)
 	window_panel(pApp->mpMatWnd, pPanel);
 
 	window_size(pApp->mpMatWnd, s2df(800, 300));
-
-	window_show(pApp->mpMatWnd);
 }
 
 static AppContext	*sAppCreate(void)
@@ -1005,6 +1022,27 @@ static void	sUpdateSelectedMaterial(AppContext *pApp)
 	utstring_done(pSZShader);
 }
 
+static void sSRV0Clicked(AppContext *pAC, Event *pEvt)
+{
+	unref(pEvt);
+
+	const StringList	*pTexs	=StuffKeeper_GetTextureList(pAC->mpSK);
+
+	const StringList	*pT	=SZList_Iterate(pTexs);
+	while(pT != NULL)
+	{
+		printf("%s\n", SZList_IteratorVal(pT));
+		pT	=SZList_IteratorNext(pT);
+	}
+
+	SZList_Clear(&pTexs);
+}
+
+static void sSRV1Clicked(AppContext *pAC, Event *pEvt)
+{
+	unref(pEvt);
+}
+
 static void sColourButtonClicked(AppContext *pAC, Event *pEvt)
 {
 	__attribute_maybe_unused__
@@ -1084,6 +1122,19 @@ static void	sFillMaterialFormValues(AppContext *pApp, const char *szMaterial)
 	sprintf(val, "%d", (int)spec[3]);
 	label_text(pApp->mpPowVal, val);
 
+	//srvs
+	const ID3D11ShaderResourceView	*pSRV0	=MAT_GetSRV0(pMat);
+	const ID3D11ShaderResourceView	*pSRV1	=MAT_GetSRV1(pMat);
+
+	const UT_string	*pSRV0Name	=StuffKeeper_GetSRVName(pApp->mpSK, pSRV0);
+	const UT_string	*pSRV1Name	=StuffKeeper_GetSRVName(pApp->mpSK, pSRV1);
+
+	const Image	*pS0	=sCreateTexImage(pSRV0Name);
+	const Image	*pS1	=sCreateTexImage(pSRV1Name);
+
+	imageview_image(pApp->mpSRV0, pS0);
+	imageview_image(pApp->mpSRV1, pS1);
+
 	const ID3D11VertexShader	*pVS	=MAT_GetVShader(pMat);
 	const ID3D11PixelShader		*pPS	=MAT_GetPShader(pMat);
 
@@ -1099,8 +1150,15 @@ static void sMatSelectionChanged(AppContext *pAC, Event *pEvt)
 	unref(pEvt);
 
 	const char	*szMatSel	=sGetSelectedMaterialName(pAC);
+	if(szMatSel == NULL)
+	{
+		window_hide(pAC->mpMatWnd);
+		return;
+	}
 
 	sFillMaterialFormValues(pAC, szMatSel);
+
+	window_show(pAC->mpMatWnd);
 }
 
 static const Image	*sMakeSmallVColourBox(vec3 colour)
@@ -1119,6 +1177,37 @@ static const Image	*sMakeSmallColourBox(color_t colour)
 
 	pixformat_t	fmt	=ekRGBA32;
 	Image	*pBlock	=image_from_pixels(32, 32, fmt, (byte_t *)block, NULL, 0);
+
+	return	pBlock;
+}
+
+static const Image	*sCreateTexImage(const UT_string *szTex)
+{
+	if(szTex == NULL)
+	{
+		return	NULL;
+	}
+
+	UT_string	*szPath;
+	utstring_new(szPath);
+
+	utstring_printf(szPath, "Textures/%s.png", utstring_body(szTex));
+
+	uint32_t	w, h;
+	int			rowPitch;
+	BYTE	**pRows	=SK_LoadTextureBytes(utstring_body(szPath), &rowPitch, &w, &h);
+
+	//put into a contiguous byte array
+	uint32_t	pix[w * h];
+
+	for(int y=0;y < h;y++)
+	{
+		int	ofs	=y * w;
+		memcpy(&pix[ofs], pRows[y], rowPitch);
+	}
+
+	pixformat_t	fmt	=ekRGBA32;
+	Image	*pBlock	=image_from_pixels(w, h, fmt, (byte_t *)pix, NULL, 0);
 
 	return	pBlock;
 }
