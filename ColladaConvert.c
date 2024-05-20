@@ -118,6 +118,7 @@ static void sLoadMaterialLib(AppContext *pAC, Event *pEvt);
 static void sLoadAnimLib(AppContext *pAC, Event *pEvt);
 static void sAssignMaterial(AppContext *pAC, Event *pEvt);
 static void sShaderFileChanged(AppContext *pAC, Event *pEvt);
+static void sShaderChanged(AppContext *pAC, Event *pEvt);
 static void sSPowChanged(AppContext *pAC, Event *pEvt);
 static void	sColourButtonClicked(AppContext *pAC, Event *pEvt);
 static void sMatSelectionChanged(AppContext *pAC, Event *pEvt);
@@ -278,6 +279,8 @@ static void	sCreateMatWindow(AppContext *pApp)
 
 	//events
 	popup_OnSelect(pApp->mpShaderFile, listener(pApp, sShaderFileChanged, AppContext));
+	popup_OnSelect(pApp->mpVSPop, listener(pApp, sShaderChanged, AppContext));
+	popup_OnSelect(pApp->mpPSPop, listener(pApp, sShaderChanged, AppContext));
 	slider_OnMoved(pApp->mpSPow, listener(pApp, sSPowChanged, AppContext));
 	button_OnClick(pApp->mpTL0, listener(pApp, sColourButtonClicked, AppContext));
 	button_OnClick(pApp->mpTL1, listener(pApp, sColourButtonClicked, AppContext));
@@ -618,6 +621,9 @@ static void	RandLightEH(void *pContext, const SDL_Event *pEvt)
 	assert(pTS);
 
 	Misc_RandomDirection(pTS->mLightDir);
+
+	//copy changes to the material selected
+	sUpdateSelectedMaterial(pTS);
 }
 
 static void	LeftMouseDownEH(void *pContext, const SDL_Event *pEvt)
@@ -920,6 +926,14 @@ static void sShaderFileChanged(AppContext *pAC, Event *pEvt)
 	utstring_done(pSZFile);
 }
 
+static void sShaderChanged(AppContext *pAC, Event *pEvt)
+{
+	unref(pEvt);
+
+	//copy changes to the material selected
+	sUpdateSelectedMaterial(pAC);
+}
+
 static void sSPowChanged(AppContext *pAC, Event *pEvt)
 {
 	const EvSlider	*pSlide	=event_params(pEvt, EvSlider);
@@ -951,14 +965,13 @@ static void	sUpdateSelectedMaterial(AppContext *pApp)
 		return;
 	}
 
-	vec3	t0, t1, t2, lightDir;
+	vec3	t0, t1, t2;
 
 	Misc_RGBAToVec3(button_get_tag(pApp->mpTL0), t0);
 	Misc_RGBAToVec3(button_get_tag(pApp->mpTL1), t1);
 	Misc_RGBAToVec3(button_get_tag(pApp->mpTL2), t2);
 
-	MAT_GetLightDir(pMat, lightDir);
-	MAT_SetLights(pMat, t0, t1, t2, lightDir);
+	MAT_SetLights(pMat, t0, t1, t2, pApp->mLightDir);
 
 	vec4	solid;
 	vec3	spec;
@@ -970,6 +983,26 @@ static void	sUpdateSelectedMaterial(AppContext *pApp)
 
 	MAT_SetSolidColour(pMat, solid);
 	MAT_SetSpecular(pMat, spec, specPower);
+
+	//shaders
+	uint32_t	seld	=popup_get_selected(pApp->mpVSPop);
+
+	UT_string	*pSZShader;
+	utstring_new(pSZShader);
+
+	utstring_printf(pSZShader, "%s", popup_get_text(pApp->mpVSPop, seld));
+
+	MAT_SetVShader(pMat, utstring_body(pSZShader), pApp->mpSK);
+
+	utstring_clear(pSZShader);
+
+	seld	=popup_get_selected(pApp->mpPSPop);
+
+	utstring_printf(pSZShader, "%s", popup_get_text(pApp->mpPSPop, seld));
+
+	MAT_SetPShader(pMat, utstring_body(pSZShader), pApp->mpSK);
+
+	utstring_done(pSZShader);
 }
 
 static void sColourButtonClicked(AppContext *pAC, Event *pEvt)
