@@ -83,10 +83,15 @@ typedef struct AppContext_t
 }  AppContext;
 
 //static forward decs
-static void			SetupKeyBinds(Input *pInp);
-static void			SetupRastVP(GraphicsDevice *pGD);
-static const Image	*sMakeSmallVColourBox(vec3 colour);
-static const Image	*sMakeSmallColourBox(color_t colour);
+static void				SetupKeyBinds(Input *pInp);
+static void				SetupRastVP(GraphicsDevice *pGD);
+static const Image		*sMakeSmallVColourBox(vec3 colour);
+static const Image		*sMakeSmallColourBox(color_t colour);
+static int				sGetSelectedMeshPartIndex(AppContext *pApp);
+static const char		*sGetSelectedMaterialName(AppContext *pApp);
+static const Material	*sGetSelectedConstMaterial(AppContext *pApp);
+static Material			*sGetSelectedMaterial(AppContext *pApp);
+static void				sUpdateSelectedMaterial(AppContext *pApp);
 
 //input event handlers
 static void	RandLightEH(void *pContext, const SDL_Event *pEvt);
@@ -891,40 +896,12 @@ static void sAssignMaterial(AppContext *pAC, Event *pEvt)
 {
 	unref(pEvt);
 
-	int	matCount	=listbox_count(pAC->mpMaterialLB);
-	int	meshCount	=listbox_count(pAC->mpMeshPartLB);
-
-	int	matSelected	=-1;
-	for(int i=0;i < matCount;i++)
-	{
-		if(listbox_selected(pAC->mpMaterialLB, i))
-		{
-			matSelected	=i;
-			break;
-		}
-	}
-
-	int	meshSelected	=-1;
-	for(int i=0;i < meshCount;i++)
-	{
-		if(listbox_selected(pAC->mpMeshPartLB, i))
-		{
-			meshSelected	=i;
-			break;
-		}
-	}
-
-	if(matSelected == -1 || meshSelected == -1)
-	{
-		return;
-	}
-
-	const char	*szMatSel	=listbox_text(pAC->mpMaterialLB, matSelected);
-	const char	*szMeshSel	=listbox_text(pAC->mpMeshPartLB, meshSelected);
+	const char	*szMatSel	=sGetSelectedMaterialName(pAC);
+	int	meshSelected		=sGetSelectedMeshPartIndex(pAC);
 
 	Character_AssignMaterial(pAC->mpChar, meshSelected, szMatSel);
 
-	printf("Assigned material %s to mesh part %s\n", szMatSel, szMeshSel);
+	printf("Assigned material %s to mesh part %d\n", szMatSel, meshSelected);
 }
 
 static void sShaderFileChanged(AppContext *pAC, Event *pEvt)
@@ -954,6 +931,9 @@ static void sSPowChanged(AppContext *pAC, Event *pEvt)
 	sprintf(val, "%d", (int)newPow);
 
 	label_text(pAC->mpPowVal, val);
+	
+	//copy changes to the material selected
+	sUpdateSelectedMaterial(pAC);
 }
 
 static void sColourChosen(AppContext *pAC, Event *pEvt)
@@ -961,6 +941,35 @@ static void sColourChosen(AppContext *pAC, Event *pEvt)
 	color_t	*pCol	=event_params(pEvt, color_t);
 
 	pAC->mChosen	=*pCol;
+}
+
+static void	sUpdateSelectedMaterial(AppContext *pApp)
+{
+	Material	*pMat	=sGetSelectedMaterial(pApp);
+	if(pMat == NULL)
+	{
+		return;
+	}
+
+	vec3	t0, t1, t2, lightDir;
+
+	Misc_RGBAToVec3(button_get_tag(pApp->mpTL0), t0);
+	Misc_RGBAToVec3(button_get_tag(pApp->mpTL1), t1);
+	Misc_RGBAToVec3(button_get_tag(pApp->mpTL2), t2);
+
+	MAT_GetLightDir(pMat, lightDir);
+	MAT_SetLights(pMat, t0, t1, t2, lightDir);
+
+	vec4	solid;
+	vec3	spec;
+	float	specPower;
+	Misc_RGBAToVec4(button_get_tag(pApp->mpSolid), solid);
+	Misc_RGBAToVec3(button_get_tag(pApp->mpSpec), spec);
+
+	specPower	=slider_get_value(pApp->mpSPow) * POW_SLIDER_MAX;
+
+	MAT_SetSolidColour(pMat, solid);
+	MAT_SetSpecular(pMat, spec, specPower);
 }
 
 static void sColourButtonClicked(AppContext *pAC, Event *pEvt)
@@ -978,7 +987,14 @@ static void sColourButtonClicked(AppContext *pAC, Event *pEvt)
 		return;
 	}
 
+	//store rgba color in tag
+	button_tag(pButn, pAC->mChosen);
+
+	//update little color box on the button
 	button_image(pButn, sMakeSmallColourBox(pAC->mChosen));
+
+	//copy changes to the material selected
+	sUpdateSelectedMaterial(pAC);
 }
 
 static bool	SelectPopupItem(PopUp *pPop, const char *pSZ)
@@ -1024,6 +1040,13 @@ static void	sFillMaterialFormValues(AppContext *pApp, const char *szMaterial)
 	button_image(pApp->mpSpec, sMakeSmallVColourBox(spec));
 	slider_value(pApp->mpSPow, (spec[3]) / (real32_t)POW_SLIDER_MAX);
 
+	//set tags to colors
+	button_tag(pApp->mpTL0, Misc_SSE_Vec3ToRGBA(t0));
+	button_tag(pApp->mpTL1, Misc_SSE_Vec3ToRGBA(t1));
+	button_tag(pApp->mpTL2, Misc_SSE_Vec3ToRGBA(t2));
+	button_tag(pApp->mpSolid, Misc_SSE_Vec4ToRGBA(sc));
+	button_tag(pApp->mpSpec, Misc_SSE_Vec3ToRGBA(spec));
+
 	char	val[6];
 	sprintf(val, "%d", (int)spec[3]);
 	label_text(pApp->mpPowVal, val);
@@ -1042,25 +1065,7 @@ static void sMatSelectionChanged(AppContext *pAC, Event *pEvt)
 {
 	unref(pEvt);
 
-	int	matCount	=listbox_count(pAC->mpMaterialLB);
-	int	matSelected	=-1;
-	int	numSelected	=0;
-	for(int i=0;i < matCount;i++)
-	{
-		if(listbox_selected(pAC->mpMaterialLB, i))
-		{
-			matSelected	=i;
-			numSelected++;
-			break;
-		}
-	}
-
-	if(numSelected != 1)
-	{
-		return;
-	}
-
-	const char	*szMatSel	=listbox_text(pAC->mpMaterialLB, matSelected);
+	const char	*szMatSel	=sGetSelectedMaterialName(pAC);
 
 	sFillMaterialFormValues(pAC, szMatSel);
 }
@@ -1083,4 +1088,57 @@ static const Image	*sMakeSmallColourBox(color_t colour)
 	Image	*pBlock	=image_from_pixels(32, 32, fmt, (byte_t *)block, NULL, 0);
 
 	return	pBlock;
+}
+
+static int	sGetSelectedMeshPartIndex(AppContext *pApp)
+{
+	int	meshCount	=listbox_count(pApp->mpMeshPartLB);
+
+	int	meshSelected	=-1;
+	for(int i=0;i < meshCount;i++)
+	{
+		if(listbox_selected(pApp->mpMeshPartLB, i))
+		{
+			meshSelected	=i;
+			break;
+		}
+	}
+	return	meshSelected;
+}
+
+static const char	*sGetSelectedMaterialName(AppContext *pApp)
+{
+	int	matCount	=listbox_count(pApp->mpMaterialLB);
+
+	int	matSelected	=-1;
+	for(int i=0;i < matCount;i++)
+	{
+		if(listbox_selected(pApp->mpMaterialLB, i))
+		{
+			matSelected	=i;
+			break;
+		}
+	}
+
+	if(matSelected == -1)
+	{
+		return	NULL;
+	}
+
+	return	listbox_text(pApp->mpMaterialLB, matSelected);
+}
+
+static Material	*sGetSelectedMaterial(AppContext *pApp)
+{
+	const char	*szMatSel	=sGetSelectedMaterialName(pApp);
+
+	return	MatLib_GetMaterial(pApp->mpMatLib, szMatSel);
+}
+
+__attribute_maybe_unused__
+static const Material	*sGetSelectedConstMaterial(AppContext *pApp)
+{
+	const char	*szMatSel	=sGetSelectedMaterialName(pApp);
+
+	return	MatLib_GetConstMaterial(pApp->mpMatLib, szMatSel);
 }
