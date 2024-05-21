@@ -13,3 +13,4 @@ x	Create new material somehow?
 	Border around srv gui
 	Don't copy alpha channel for SRV (clearer image)
 	Fix memleaks!
+	key handling (f2, del)

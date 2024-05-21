@@ -35,6 +35,7 @@ typedef struct AppContext_t
 	Window	*mpWnd;
 	Window	*mpMatWnd;
 	Window	*mpTexWnd;	//pops up a texture choice
+	Window	*mpEditWnd;	//for editing text
 
 	GraphicsDevice	*mpGD;
 	GameCamera		*mpCam;
@@ -69,6 +70,7 @@ typedef struct AppContext_t
 	color_t		mChosen;		//returned from color dialog
 	PopUp		*mpTexList;		//pops up to pick a texture
 	Button		*mpMatStuff;	//new mat or rename mat
+	Edit		*mpTextInput;	//for renaming things
 
 	//material form controls
 	Button		*mpTL0, *mpTL1, *mpTL2;
@@ -326,17 +328,13 @@ static void	sCreateMatWindow(AppContext *pApp)
 	Panel	*pPanel	=panel_create();
 
 	panel_layout(pPanel, pLay);
-
 	window_panel(pApp->mpMatWnd, pPanel);
-
 	window_size(pApp->mpMatWnd, s2df(800, 300));
 
 	Panel	*pTexPanel	=panel_create();
 
 	panel_layout(pTexPanel, pTexLay);
-
 	window_panel(pApp->mpTexWnd, pTexPanel);
-
 	window_size(pApp->mpTexWnd, s2df(380, 50));
 }
 
@@ -345,13 +343,15 @@ static AppContext	*sAppCreate(void)
 	AppContext	*pApp	=heap_new0(AppContext);
 	
 	gui_language("");
-	pApp->mpWnd	=sCreateWindow();
+	pApp->mpWnd		=sCreateWindow();
+	pApp->mpEditWnd	=window_create(ekWINDOW_ESC | ekWINDOW_RETURN | ekWINDOW_RESIZE);
 
 	window_origin(pApp->mpWnd, v2df(500.f, 200.f));
 	window_OnClose(pApp->mpWnd, listener(pApp, sOnClose, AppContext));
 	window_show(pApp->mpWnd);
 
-	Layout	*pLay	=layout_create(3, 3);
+	Layout	*pLay		=layout_create(3, 3);
+	Layout	*pEditLay	=layout_create(1, 1);
 	layout_margin(pLay, 10);
 
 	Button	*pB0		=button_push();
@@ -370,6 +370,8 @@ static AppContext	*sAppCreate(void)
 	pApp->mpMaterialLB	=listbox_create();
 	pApp->mpAnimLB		=listbox_create();
 
+	pApp->mpTextInput	=edit_create();
+
 	layout_button(pLay, pB0, 0, 0);
 	layout_button(pLay, pB1, 1, 0);
 	layout_button(pLay, pB2, 2, 0);
@@ -378,6 +380,8 @@ static AppContext	*sAppCreate(void)
 	layout_listbox(pLay, pApp->mpMaterialLB, 2, 1);
 	layout_listbox(pLay, pApp->mpAnimLB, 0, 2);
 	layout_button(pLay, pApp->mpMatStuff, 2, 2);
+
+	layout_edit(pEditLay, pApp->mpTextInput, 0, 0);
 
 	button_OnClick(pB0, listener(pApp, sLoadCharacter, AppContext));
 	button_OnClick(pB1, listener(pApp, sLoadMaterialLib, AppContext));
@@ -389,10 +393,14 @@ static AppContext	*sAppCreate(void)
 	Panel	*pPanel	=panel_create();
 
 	panel_layout(pPanel, pLay);
-
 	window_panel(pApp->mpWnd, pPanel);
-
 	window_size(pApp->mpWnd, s2df(800, 600));
+
+	Panel	*pEditPanel	=panel_create();
+
+	panel_layout(pEditPanel, pEditLay);
+	window_panel(pApp->mpEditWnd, pEditPanel);
+	window_size(pApp->mpEditWnd, s2df(380, 50));
 
 	sCreateMatWindow(pApp);
 
@@ -955,6 +963,22 @@ static void sAssignMaterial(AppContext *pAC, Event *pEvt)
 	printf("Assigned material %s to mesh part %d\n", szMatSel, meshSelected);
 }
 
+static int sGetSelectedIndex(const ListBox *pLB)
+{
+	//change the text in the listbox too
+	int	count	=listbox_count(pLB);
+	int	seld	=-1;
+	for(int i=0;i < count;i++)
+	{
+		if(listbox_selected(pLB, i))
+		{
+			seld	=i;
+			break;
+		}
+	}
+	return	seld;
+}
+
 static void sDoMatStuff(AppContext *pAC, Event *pEvt)
 {
 	unref(pEvt);
@@ -990,6 +1014,36 @@ static void sDoMatStuff(AppContext *pAC, Event *pEvt)
 		printf("New material %s created.\n", defMatName);
 
 		listbox_add_elem(pAC->mpMaterialLB, defMatName, NULL);
+	}
+	else
+	{
+		//rename
+		//get the screen location for the selected material
+		V2Df	pos		=window_get_origin(pAC->mpWnd);
+		S2Df	size	=window_get_client_size(pAC->mpWnd);
+
+		V2Df	goodPos	=pos;
+
+		goodPos.x	+=size.width * 0.75f;
+		goodPos.y	+=size.height / 4;
+
+		//I thought about trying to bump Y a bit
+		//according to the index selected, but that
+		//doesn't work if there's a scrollbar involved
+		window_origin(pAC->mpEditWnd, goodPos);
+		
+		uint32_t	ret	=window_modal(pAC->mpEditWnd, pAC->mpWnd);
+		if(ret != ekGUI_CLOSE_ESC)
+		{
+			MatLib_ReName(pAC->mpMatLib, szMatSel, edit_get_text(pAC->mpTextInput));
+
+			//change the text in the listbox too
+			int	seld	=sGetSelectedIndex(pAC->mpMaterialLB);
+			if(seld != -1)
+			{
+				listbox_set_elem(pAC->mpMaterialLB, seld, edit_get_text(pAC->mpTextInput), NULL);
+			}
+		}
 	}
 }
 
@@ -1268,6 +1322,10 @@ static void	sFillMaterialFormValues(AppContext *pApp, const char *szMaterial)
 	}
 
 	const Material	*pMat	=MatLib_GetConstMaterial(pApp->mpMatLib, szMaterial);
+	if(pMat == NULL)
+	{
+		return;
+	}
 
 	vec3	t0, t1, t2;
 	MAT_GetTrilight(pMat, t0, t1, t2);
@@ -1388,34 +1446,12 @@ static const Image	*sCreateTexImage(const UT_string *szTex)
 
 static int	sGetSelectedMeshPartIndex(AppContext *pApp)
 {
-	int	meshCount	=listbox_count(pApp->mpMeshPartLB);
-
-	int	meshSelected	=-1;
-	for(int i=0;i < meshCount;i++)
-	{
-		if(listbox_selected(pApp->mpMeshPartLB, i))
-		{
-			meshSelected	=i;
-			break;
-		}
-	}
-	return	meshSelected;
+	return	sGetSelectedIndex(pApp->mpMeshPartLB);
 }
 
 static const char	*sGetSelectedMaterialName(AppContext *pApp)
 {
-	int	matCount	=listbox_count(pApp->mpMaterialLB);
-
-	int	matSelected	=-1;
-	for(int i=0;i < matCount;i++)
-	{
-		if(listbox_selected(pApp->mpMaterialLB, i))
-		{
-			matSelected	=i;
-			break;
-		}
-	}
-
+	int	matSelected	=sGetSelectedIndex(pApp->mpMaterialLB);
 	if(matSelected == -1)
 	{
 		return	NULL;
