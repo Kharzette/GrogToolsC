@@ -66,19 +66,20 @@ typedef struct AppContext_t
 	ListBox		*mpMeshPartLB;
 	ListBox		*mpMaterialLB;
 	ListBox		*mpAnimLB;
+	color_t		mChosen;		//returned from color dialog
+	PopUp		*mpTexList;		//pops up to pick a texture
+	Button		*mpMatStuff;	//new mat or rename mat
+
+	//material form controls
+	Button		*mpTL0, *mpTL1, *mpTL2;
+	Button		*mpSolid, *mpSpec;
+	Slider		*mpSPow;
+	ImageView	*mpSRV0;
+	ImageView	*mpSRV1;
 	PopUp		*mpShaderFile;	//stat/char/bsp etc
 	PopUp		*mpVSPop;
 	PopUp		*mpPSPop;
 	Label		*mpPowVal;		//set by the slider
-	color_t		mChosen;		//returned from color dialog
-	ImageView	*mpSRV0;
-	ImageView	*mpSRV1;
-	PopUp		*mpTexList;		//pops up to pick a texture
-
-	//material form controls
-	Button	*mpTL0, *mpTL1, *mpTL2;
-	Button	*mpSolid, *mpSpec;
-	Slider	*mpSPow;
 
 	//list of stuff loaded
 	const StringList	*mpAnimList;
@@ -132,6 +133,7 @@ static void sMatSelectionChanged(AppContext *pAC, Event *pEvt);
 static void	sSRV0Clicked(AppContext *pAC, Event *pEvt);
 static void	sSRV1Clicked(AppContext *pAC, Event *pEvt);
 static void	sTexChosen(AppContext *pAC, Event *pEvt);
+static void	sDoMatStuff(AppContext *pAC, Event *pEvt);	//contextual
 
 
 static Window	*sCreateWindow(void)
@@ -352,15 +354,17 @@ static AppContext	*sAppCreate(void)
 	Layout	*pLay	=layout_create(3, 3);
 	layout_margin(pLay, 10);
 
-	Button	*pB0	=button_push();
-	Button	*pB1	=button_push();
-	Button	*pB2	=button_push();
-	Button	*pB3	=button_push();
+	Button	*pB0		=button_push();
+	Button	*pB1		=button_push();
+	Button	*pB2		=button_push();
+	Button	*pB3		=button_push();
+	pApp->mpMatStuff	=button_push();
 
 	button_text(pB0, "Load Character");
 	button_text(pB1, "Load MatLib");
 	button_text(pB2, "Load AnimLib");
 	button_text(pB3, "<- Assign Material <-");
+	button_text(pApp->mpMatStuff, "New Material");
 
 	pApp->mpMeshPartLB	=listbox_create();
 	pApp->mpMaterialLB	=listbox_create();
@@ -373,12 +377,14 @@ static AppContext	*sAppCreate(void)
 	layout_button(pLay, pB3, 1, 1);
 	layout_listbox(pLay, pApp->mpMaterialLB, 2, 1);
 	layout_listbox(pLay, pApp->mpAnimLB, 0, 2);
+	layout_button(pLay, pApp->mpMatStuff, 2, 2);
 
 	button_OnClick(pB0, listener(pApp, sLoadCharacter, AppContext));
 	button_OnClick(pB1, listener(pApp, sLoadMaterialLib, AppContext));
 	button_OnClick(pB2, listener(pApp, sLoadAnimLib, AppContext));
 	button_OnClick(pB3, listener(pApp, sAssignMaterial, AppContext));
 	listbox_OnSelect(pApp->mpMaterialLB, listener(pApp, sMatSelectionChanged, AppContext));
+	button_OnClick(pApp->mpMatStuff, listener(pApp, sDoMatStuff, AppContext));
 
 	Panel	*pPanel	=panel_create();
 
@@ -949,6 +955,44 @@ static void sAssignMaterial(AppContext *pAC, Event *pEvt)
 	printf("Assigned material %s to mesh part %d\n", szMatSel, meshSelected);
 }
 
+static void sDoMatStuff(AppContext *pAC, Event *pEvt)
+{
+	unref(pEvt);
+
+	//if a material is selected, this will rename it
+	//if no material is selected, create a new one
+	const char	*szMatSel	=sGetSelectedMaterialName(pAC);
+
+	if(szMatSel == NULL)
+	{
+		//if there's no material lib yet, create one
+		if(pAC->mpMatLib == NULL)
+		{
+			pAC->mpMatLib	=MatLib_Create(pAC->mpSK);
+		}
+
+		Material	*pMat	=MAT_Create(pAC->mpGD);
+
+		char	defMatName[32]	="NewMat";
+		int		dupeCount		=0;
+
+		Material	*pOtherMat	=MatLib_GetMaterial(pAC->mpMatLib, defMatName);
+		while(pOtherMat != NULL)
+		{
+			sprintf(defMatName, "NewMat%03d", dupeCount);
+			dupeCount++;
+
+			pOtherMat	=MatLib_GetMaterial(pAC->mpMatLib, defMatName);
+		}
+
+		MatLib_Add(pAC->mpMatLib, defMatName, pMat);
+
+		printf("New material %s created.\n", defMatName);
+
+		listbox_add_elem(pAC->mpMaterialLB, defMatName, NULL);
+	}
+}
+
 static void sShaderFileChanged(AppContext *pAC, Event *pEvt)
 {
 	unref(pEvt);
@@ -1257,11 +1301,17 @@ static void	sFillMaterialFormValues(AppContext *pApp, const char *szMaterial)
 	const ID3D11VertexShader	*pVS	=MAT_GetVShader(pMat);
 	const ID3D11PixelShader		*pPS	=MAT_GetPShader(pMat);
 
-	const UT_string	*pVSName	=StuffKeeper_GetVSName(pApp->mpSK, pVS);
-	const UT_string	*pPSName	=StuffKeeper_GetPSName(pApp->mpSK, pPS);
+	if(pVS != NULL)
+	{
+		const UT_string	*pVSName	=StuffKeeper_GetVSName(pApp->mpSK, pVS);
+		SelectPopupItem(pApp->mpVSPop, utstring_body(pVSName));
+	}
 
-	SelectPopupItem(pApp->mpVSPop, utstring_body(pVSName));
-	SelectPopupItem(pApp->mpPSPop, utstring_body(pPSName));
+	if(pPS != NULL)
+	{
+		const UT_string	*pPSName	=StuffKeeper_GetPSName(pApp->mpSK, pPS);
+		SelectPopupItem(pApp->mpPSPop, utstring_body(pPSName));
+	}
 }
 
 static void sMatSelectionChanged(AppContext *pAC, Event *pEvt)
@@ -1271,6 +1321,7 @@ static void sMatSelectionChanged(AppContext *pAC, Event *pEvt)
 	const char	*szMatSel	=sGetSelectedMaterialName(pAC);
 	if(szMatSel == NULL)
 	{
+		button_text(pAC->mpMatStuff, "Create Material");
 		window_hide(pAC->mpMatWnd);
 		return;
 	}
@@ -1278,6 +1329,8 @@ static void sMatSelectionChanged(AppContext *pAC, Event *pEvt)
 	sFillMaterialFormValues(pAC, szMatSel);
 
 	window_show(pAC->mpMatWnd);
+
+	button_text(pAC->mpMatStuff, "Rename Material");
 }
 
 static const Image	*sMakeSmallVColourBox(vec3 colour)
