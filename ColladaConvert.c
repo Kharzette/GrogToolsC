@@ -31,8 +31,10 @@
 //will likely grow
 typedef struct AppContext_t
 {
+	//gui windows
 	Window	*mpWnd;
 	Window	*mpMatWnd;
+	Window	*mpTexWnd;	//pops up a texture choice
 
 	GraphicsDevice	*mpGD;
 	GameCamera		*mpCam;
@@ -71,6 +73,7 @@ typedef struct AppContext_t
 	color_t		mChosen;		//returned from color dialog
 	ImageView	*mpSRV0;
 	ImageView	*mpSRV1;
+	PopUp		*mpTexList;		//pops up to pick a texture
 
 	//material form controls
 	Button	*mpTL0, *mpTL1, *mpTL2;
@@ -95,6 +98,7 @@ static const Material	*sGetSelectedConstMaterial(AppContext *pApp);
 static Material			*sGetSelectedMaterial(AppContext *pApp);
 static void				sUpdateSelectedMaterial(AppContext *pApp);
 static const Image		*sCreateTexImage(const UT_string *szTex);
+static bool				SelectPopupItem(PopUp *pPop, const char *pSZ);
 
 //input event handlers
 static void	RandLightEH(void *pContext, const SDL_Event *pEvt);
@@ -127,6 +131,7 @@ static void	sColourButtonClicked(AppContext *pAC, Event *pEvt);
 static void sMatSelectionChanged(AppContext *pAC, Event *pEvt);
 static void	sSRV0Clicked(AppContext *pAC, Event *pEvt);
 static void	sSRV1Clicked(AppContext *pAC, Event *pEvt);
+static void	sTexChosen(AppContext *pAC, Event *pEvt);
 
 
 static Window	*sCreateWindow(void)
@@ -213,11 +218,15 @@ static void	sCreateMatWindow(AppContext *pApp)
 	//eventually want this to tag alongside the main window
 	window_origin(pApp->mpMatWnd, v2df(100.f, 200.f));
 
+	pApp->mpTexWnd	=window_create(ekWINDOW_ESC | ekWINDOW_RETURN | ekWINDOW_RESIZE);
+
 	//material should edit:
 	//trilight values, solid colour, spec color and power
 	//srv0 and 1, vert and pixel shader
 	Layout	*pLay	=layout_create(5, 6);
 	layout_margin(pLay, 10);
+
+	Layout	*pTexLay	=layout_create(1, 1);
 
 	//color buttons
 	pApp->mpTL0		=button_push();
@@ -256,6 +265,7 @@ static void	sCreateMatWindow(AppContext *pApp)
 	pApp->mpShaderFile	=popup_create();
 	pApp->mpVSPop		=popup_create();
 	pApp->mpPSPop		=popup_create();
+	pApp->mpTexList		=popup_create();
 
 	//shaderfiles
 	popup_add_elem(pApp->mpShaderFile, "Character", NULL);
@@ -294,6 +304,9 @@ static void	sCreateMatWindow(AppContext *pApp)
 	layout_imageview(pLay, pApp->mpSRV0, 3, 2);
 	layout_imageview(pLay, pApp->mpSRV1, 3, 3);
 
+	//texlist
+	layout_popup(pTexLay, pApp->mpTexList, 0, 0);
+
 	//events
 	popup_OnSelect(pApp->mpShaderFile, listener(pApp, sShaderFileChanged, AppContext));
 	popup_OnSelect(pApp->mpVSPop, listener(pApp, sShaderChanged, AppContext));
@@ -306,6 +319,7 @@ static void	sCreateMatWindow(AppContext *pApp)
 	button_OnClick(pApp->mpSpec, listener(pApp, sColourButtonClicked, AppContext));
 	imageview_OnClick(pApp->mpSRV0, listener(pApp, sSRV0Clicked, AppContext));
 	imageview_OnClick(pApp->mpSRV1, listener(pApp, sSRV1Clicked, AppContext));
+	popup_OnSelect(pApp->mpTexList, listener(pApp, sTexChosen, AppContext));
 
 	Panel	*pPanel	=panel_create();
 
@@ -314,6 +328,14 @@ static void	sCreateMatWindow(AppContext *pApp)
 	window_panel(pApp->mpMatWnd, pPanel);
 
 	window_size(pApp->mpMatWnd, s2df(800, 300));
+
+	Panel	*pTexPanel	=panel_create();
+
+	panel_layout(pTexPanel, pTexLay);
+
+	window_panel(pApp->mpTexWnd, pTexPanel);
+
+	window_size(pApp->mpTexWnd, s2df(380, 50));
 }
 
 static AppContext	*sAppCreate(void)
@@ -943,6 +965,33 @@ static void sShaderFileChanged(AppContext *pAC, Event *pEvt)
 	utstring_done(pSZFile);
 }
 
+static void sTexChosen(AppContext *pAC, Event *pEvt)
+{
+	Material	*pMat	=sGetSelectedMaterial(pAC);
+	if(pMat == NULL)
+	{
+		unref(pEvt);
+		window_stop_modal(pAC->mpTexWnd, ekGUI_CLOSE_ESC);
+		return;
+	}
+
+	const EvButton	*pB	=event_params(pEvt, EvButton);
+
+	//tag determines which SRV was clicked
+	uint32_t	tag	=guicontrol_get_tag((GuiControl *)pAC->mpTexList);
+
+	if(tag == 0)
+	{
+		MAT_SetSRV0(pMat, pB->text, pAC->mpSK);
+	}
+	else
+	{
+		MAT_SetSRV1(pMat, pB->text, pAC->mpSK);
+	}
+
+	window_stop_modal(pAC->mpTexWnd, 69);
+}
+
 static void sShaderChanged(AppContext *pAC, Event *pEvt)
 {
 	unref(pEvt);
@@ -1022,25 +1071,105 @@ static void	sUpdateSelectedMaterial(AppContext *pApp)
 	utstring_done(pSZShader);
 }
 
-static void sSRV0Clicked(AppContext *pAC, Event *pEvt)
+//pLapp pLapp pLapp, get texture, get texture, get texture
+static void SpawnTexWindow(AppContext *pLapp, int idx)
 {
-	unref(pEvt);
+	Material	*pMat	=sGetSelectedMaterial(pLapp);
+	if(pMat == NULL)
+	{
+		return;
+	}
 
-	const StringList	*pTexs	=StuffKeeper_GetTextureList(pAC->mpSK);
+	StringList	*pTexs	=StuffKeeper_GetTextureList(pLapp->mpSK);
+	if(pTexs == NULL)
+	{
+		return;
+	}
+
+	popup_clear(pLapp->mpTexList);
 
 	const StringList	*pT	=SZList_Iterate(pTexs);
 	while(pT != NULL)
 	{
 		printf("%s\n", SZList_IteratorVal(pT));
+
+		popup_add_elem(pLapp->mpTexList, SZList_IteratorVal(pT), NULL);
+
 		pT	=SZList_IteratorNext(pT);
 	}
 
 	SZList_Clear(&pTexs);
+
+	const ID3D11ShaderResourceView	*pSRV	=(idx == 0)? MAT_GetSRV0(pMat) : MAT_GetSRV1(pMat);
+	if(pSRV != NULL)
+	{
+		const UT_string	*pSRVName	=StuffKeeper_GetSRVName(pLapp->mpSK, pSRV);
+		SelectPopupItem(pLapp->mpTexList, utstring_body(pSRVName));
+	}
+
+	//get the screen location for the SRV button
+	V2Df	pos		=window_get_origin(pLapp->mpMatWnd);
+	S2Df	size	=window_get_client_size(pLapp->mpMatWnd);
+
+	V2Df	goodPos	=pos;
+
+	goodPos.x	+=size.width;
+	goodPos.y	+=size.height / 2;
+
+	if(idx != 0)
+	{
+		goodPos.y	+=100;
+	}
+
+	window_origin(pLapp->mpTexWnd, goodPos);
+}
+
+static void UpdateSRVImages(AppContext *pApp)
+{
+	Material	*pMat	=sGetSelectedMaterial(pApp);
+	if(pMat == NULL)
+	{
+		return;
+	}
+
+	//srvs
+	const ID3D11ShaderResourceView	*pSRV0	=MAT_GetSRV0(pMat);
+	const ID3D11ShaderResourceView	*pSRV1	=MAT_GetSRV1(pMat);
+
+	const UT_string	*pSRV0Name	=StuffKeeper_GetSRVName(pApp->mpSK, pSRV0);
+	const UT_string	*pSRV1Name	=StuffKeeper_GetSRVName(pApp->mpSK, pSRV1);
+
+	const Image	*pS0	=sCreateTexImage(pSRV0Name);
+	const Image	*pS1	=sCreateTexImage(pSRV1Name);
+
+	imageview_image(pApp->mpSRV0, pS0);
+	imageview_image(pApp->mpSRV1, pS1);
+}
+
+static void sSRVClicked(AppContext *pApp, int idx)
+{
+	//tag with SRV index
+	guicontrol_tag((GuiControl *)pApp->mpTexList, idx);
+
+	SpawnTexWindow(pApp, idx);
+
+	uint32_t	ret	=window_modal(pApp->mpTexWnd, pApp->mpMatWnd);
+	if(ret != ekGUI_CLOSE_ESC)
+	{
+		UpdateSRVImages(pApp);
+	}
+}
+
+static void sSRV0Clicked(AppContext *pAC, Event *pEvt)
+{
+	unref(pEvt);
+	sSRVClicked(pAC, 0);
 }
 
 static void sSRV1Clicked(AppContext *pAC, Event *pEvt)
 {
 	unref(pEvt);
+	sSRVClicked(pAC, 1);
 }
 
 static void sColourButtonClicked(AppContext *pAC, Event *pEvt)
@@ -1123,17 +1252,7 @@ static void	sFillMaterialFormValues(AppContext *pApp, const char *szMaterial)
 	label_text(pApp->mpPowVal, val);
 
 	//srvs
-	const ID3D11ShaderResourceView	*pSRV0	=MAT_GetSRV0(pMat);
-	const ID3D11ShaderResourceView	*pSRV1	=MAT_GetSRV1(pMat);
-
-	const UT_string	*pSRV0Name	=StuffKeeper_GetSRVName(pApp->mpSK, pSRV0);
-	const UT_string	*pSRV1Name	=StuffKeeper_GetSRVName(pApp->mpSK, pSRV1);
-
-	const Image	*pS0	=sCreateTexImage(pSRV0Name);
-	const Image	*pS1	=sCreateTexImage(pSRV1Name);
-
-	imageview_image(pApp->mpSRV0, pS0);
-	imageview_image(pApp->mpSRV1, pS1);
+	UpdateSRVImages(pApp);
 
 	const ID3D11VertexShader	*pVS	=MAT_GetVShader(pMat);
 	const ID3D11PixelShader		*pPS	=MAT_GetPShader(pMat);
@@ -1198,16 +1317,18 @@ static const Image	*sCreateTexImage(const UT_string *szTex)
 	BYTE	**pRows	=SK_LoadTextureBytes(utstring_body(szPath), &rowPitch, &w, &h);
 
 	//put into a contiguous byte array
-	uint32_t	pix[w * h];
+	uint32_t	*pPix	=malloc(w * h * sizeof(uint32_t));
 
 	for(int y=0;y < h;y++)
 	{
 		int	ofs	=y * w;
-		memcpy(&pix[ofs], pRows[y], rowPitch);
+		memcpy(&pPix[ofs], pRows[y], rowPitch);
 	}
 
 	pixformat_t	fmt	=ekRGBA32;
-	Image	*pBlock	=image_from_pixels(w, h, fmt, (byte_t *)pix, NULL, 0);
+	Image	*pBlock	=image_from_pixels(w, h, fmt, (byte_t *)pPix, NULL, 0);
+
+	free(pPix);
 
 	return	pBlock;
 }
