@@ -102,7 +102,7 @@ static const Material	*sGetSelectedConstMaterial(AppContext *pApp);
 static Material			*sGetSelectedMaterial(AppContext *pApp);
 static void				sUpdateSelectedMaterial(AppContext *pApp);
 static const Image		*sCreateTexImage(const UT_string *szTex);
-static bool				SelectPopupItem(PopUp *pPop, const char *pSZ);
+static bool				sSelectPopupItem(PopUp *pPop, const char *pSZ);
 static int 				sGetSelectedIndex(const ListBox *pLB);
 static void				sDeleteListBoxItem(ListBox *pLB, int idx);
 static uint32_t			sSpawnReName(AppContext *pApp, V2Df pos, const char *szOld,
@@ -137,6 +137,7 @@ static void sShaderChanged(AppContext *pAC, Event *pEvt);
 static void sSPowChanged(AppContext *pAC, Event *pEvt);
 static void	sColourButtonClicked(AppContext *pAC, Event *pEvt);
 static void sMatSelectionChanged(AppContext *pAC, Event *pEvt);
+static void sMeshSelectionChanged(AppContext *pAC, Event *pEvt);
 static void	sSRV0Clicked(AppContext *pAC, Event *pEvt);
 static void	sSRV1Clicked(AppContext *pAC, Event *pEvt);
 static void	sTexChosen(AppContext *pAC, Event *pEvt);
@@ -399,6 +400,7 @@ static AppContext	*sAppCreate(void)
 	button_OnClick(pB2, listener(pApp, sLoadAnimLib, AppContext));
 	button_OnClick(pB3, listener(pApp, sAssignMaterial, AppContext));
 	listbox_OnSelect(pApp->mpMaterialLB, listener(pApp, sMatSelectionChanged, AppContext));
+	listbox_OnSelect(pApp->mpMeshPartLB, listener(pApp, sMeshSelectionChanged, AppContext));
 	button_OnClick(pApp->mpMatStuff, listener(pApp, sDoMatStuff, AppContext));
 
 	Panel	*pPanel	=panel_create();
@@ -865,11 +867,7 @@ static void sLoadCharacter(AppContext *pAC, Event *pEvt)
 
 	if(pAC->mpChar != NULL)
 	{
-		//free existing if no parts
-		if(Character_GetNumParts(pAC->mpChar) <= 0)
-		{
-			Character_Destroy(pAC->mpChar);
-		}
+		Character_Destroy(pAC->mpChar);
 	}
 
 	pAC->mpChar	=Character_Read(pFileName);
@@ -1202,7 +1200,7 @@ static void SpawnTexWindow(AppContext *pLapp, int idx)
 	if(pSRV != NULL)
 	{
 		const UT_string	*pSRVName	=StuffKeeper_GetSRVName(pLapp->mpSK, pSRV);
-		SelectPopupItem(pLapp->mpTexList, utstring_body(pSRVName));
+		sSelectPopupItem(pLapp->mpTexList, utstring_body(pSRVName));
 	}
 
 	//get the screen location for the SRV button
@@ -1295,7 +1293,7 @@ static void sColourButtonClicked(AppContext *pAC, Event *pEvt)
 	sUpdateSelectedMaterial(pAC);
 }
 
-static bool	SelectPopupItem(PopUp *pPop, const char *pSZ)
+static bool	sSelectPopupItem(PopUp *pPop, const char *pSZ)
 {
 	int	cnt	=popup_count(pPop);
 
@@ -1307,6 +1305,24 @@ static bool	SelectPopupItem(PopUp *pPop, const char *pSZ)
 		if(result == 0)
 		{
 			popup_selected(pPop, i);
+			return	true;
+		}
+	}
+	return	false;
+}
+
+static bool	sSelectListBoxItem(ListBox *pLB, const char *pSZ)
+{
+	int	cnt	=listbox_count(pLB);
+
+	for(int i=0;i < cnt;i++)
+	{
+		const char	*pItemTxt	=listbox_text(pLB, i);
+
+		int	result	=strcmp(pItemTxt, pSZ);
+		if(result == 0)
+		{
+			listbox_select(pLB, i, true);
 			return	true;
 		}
 	}
@@ -1362,13 +1378,13 @@ static void	sFillMaterialFormValues(AppContext *pApp, const char *szMaterial)
 	if(pVS != NULL)
 	{
 		const UT_string	*pVSName	=StuffKeeper_GetVSName(pApp->mpSK, pVS);
-		SelectPopupItem(pApp->mpVSPop, utstring_body(pVSName));
+		sSelectPopupItem(pApp->mpVSPop, utstring_body(pVSName));
 	}
 
 	if(pPS != NULL)
 	{
 		const UT_string	*pPSName	=StuffKeeper_GetPSName(pApp->mpSK, pPS);
-		SelectPopupItem(pApp->mpPSPop, utstring_body(pPSName));
+		sSelectPopupItem(pApp->mpPSPop, utstring_body(pPSName));
 	}
 }
 
@@ -1539,6 +1555,26 @@ static void sMatSelectionChanged(AppContext *pAC, Event *pEvt)
 	window_show(pAC->mpMatWnd);
 
 	button_text(pAC->mpMatStuff, "Rename Material");
+}
+
+static void sMeshSelectionChanged(AppContext *pAC, Event *pEvt)
+{
+	unref(pEvt);
+
+	int	seld	=sGetSelectedMeshPartIndex(pAC);	
+	if(seld == -1)
+	{
+		return;
+	}
+
+	const char	*szMesh	=listbox_text(pAC->mpMeshPartLB, seld);
+
+	const char	*szMat	=Character_GetMaterialForPart(pAC->mpChar, szMesh);
+
+	if(sSelectListBoxItem(pAC->mpMaterialLB, szMat))
+	{
+		sMatSelectionChanged(pAC, NULL);
+	}
 }
 
 static const Image	*sMakeSmallVColourBox(vec3 colour)
