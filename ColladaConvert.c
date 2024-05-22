@@ -83,12 +83,13 @@ typedef struct AppContext_t
 	PopUp		*mpPSPop;
 	Label		*mpPowVal;		//set by the slider
 
-	//list of stuff loaded
-	const StringList	*mpAnimList;
-	const StringList	*mpMatList;
-	const StringList	*mpMeshList;
+	//list of anims loaded
+	StringList	*mpAnimList;
 
 }  AppContext;
+
+//function pointer types
+typedef void	(*ReNameFunc)(void *, const char *, const char *);
 
 //static forward decs
 static void				SetupKeyBinds(Input *pInp);
@@ -102,6 +103,10 @@ static Material			*sGetSelectedMaterial(AppContext *pApp);
 static void				sUpdateSelectedMaterial(AppContext *pApp);
 static const Image		*sCreateTexImage(const UT_string *szTex);
 static bool				SelectPopupItem(PopUp *pPop, const char *pSZ);
+static int 				sGetSelectedIndex(const ListBox *pLB);
+static void				sDeleteListBoxItem(ListBox *pLB, int idx);
+static uint32_t			sSpawnReName(AppContext *pApp, V2Df pos, const char *szOld,
+							ListBox *pLB, void *pItem, ReNameFunc reName);
 
 //input event handlers
 static void	RandLightEH(void *pContext, const SDL_Event *pEvt);
@@ -135,8 +140,9 @@ static void sMatSelectionChanged(AppContext *pAC, Event *pEvt);
 static void	sSRV0Clicked(AppContext *pAC, Event *pEvt);
 static void	sSRV1Clicked(AppContext *pAC, Event *pEvt);
 static void	sTexChosen(AppContext *pAC, Event *pEvt);
-static void	sDoMatStuff(AppContext *pAC, Event *pEvt);	//contextual
-
+static void	sDoMatStuff(AppContext *pAC, Event *pEvt);		//contextual
+static void	sOnHotKeyReName(AppContext *pAC, Event *pEvt);	//F2
+static void	sOnHotKeyDelete(AppContext *pAC, Event *pEvt);	//F2
 
 static Window	*sCreateWindow(void)
 {
@@ -350,6 +356,10 @@ static AppContext	*sAppCreate(void)
 	window_OnClose(pApp->mpWnd, listener(pApp, sOnClose, AppContext));
 	window_show(pApp->mpWnd);
 
+	//set up F2 and del.  Del is SUPR!?
+	window_hotkey(pApp->mpWnd, ekKEY_F2, 0, listener(pApp, sOnHotKeyReName, AppContext));
+	window_hotkey(pApp->mpWnd, ekKEY_SUPR, 0, listener(pApp, sOnHotKeyDelete, AppContext));
+
 	Layout	*pLay		=layout_create(3, 3);
 	Layout	*pEditLay	=layout_create(1, 1);
 	layout_margin(pLay, 10);
@@ -496,17 +506,7 @@ static void sRender(AppContext *pApp, const real64_t prTime, const real64_t cTim
 
 	if(pApp->mpALib != NULL)
 	{
-		int	animCount	=listbox_count(pApp->mpAnimLB);
-		int	selected	=-1;
-		for(int i=0;i < animCount;i++)
-		{
-			if(listbox_selected(pApp->mpAnimLB, i))
-			{
-				selected	=i;
-				break;
-			}
-		}
-
+		int	selected	=sGetSelectedIndex(pApp->mpAnimLB);
 		if(selected >= 0)
 		{
 			int					index	=0;
@@ -863,11 +863,20 @@ static void sLoadCharacter(AppContext *pAC, Event *pEvt)
 
 	printf("FileName: %s\n", pFileName);
 
+	if(pAC->mpChar != NULL)
+	{
+		//free existing if no parts
+		if(Character_GetNumParts(pAC->mpChar) <= 0)
+		{
+			Character_Destroy(pAC->mpChar);
+		}
+	}
+
 	pAC->mpChar	=Character_Read(pFileName);
 
 	printf("Character loaded...\n");
 
-	pAC->mpMeshList	=Character_GetPartList(pAC->mpChar);
+	StringList	*pParts	=Character_GetPartList(pAC->mpChar);
 
 	DictSZ_New(&pAC->mpMeshes);
 
@@ -876,7 +885,7 @@ static void sLoadCharacter(AppContext *pAC, Event *pEvt)
 	UT_string	*szFullPath;
 	utstring_new(szFullPath);
 
-	const StringList	*pCur	=SZList_Iterate(pAC->mpMeshList);
+	const StringList	*pCur	=SZList_Iterate(pParts);
 	while(pCur != NULL)
 	{
 		utstring_printf(szFullPath, "%s/%s.mesh", utstring_body(szPath), SZList_IteratorVal(pCur));
@@ -889,6 +898,8 @@ static void sLoadCharacter(AppContext *pAC, Event *pEvt)
 
 		pCur	=SZList_IteratorNext(pCur);
 	}
+
+	SZList_Clear(&pParts);
 }
 
 static void sLoadMaterialLib(AppContext *pAC, Event *pEvt)
@@ -908,11 +919,11 @@ static void sLoadMaterialLib(AppContext *pAC, Event *pEvt)
 
 	pAC->mpMatLib	=MatLib_Read(pFileName, pAC->mpSK);
 
-	pAC->mpMatList	=MatLib_GetMatList(pAC->mpMatLib);
+	StringList	*pMats	=MatLib_GetMatList(pAC->mpMatLib);
 
 	printf("Material lib loaded...\n");
 
-	const StringList	*pCur	=SZList_Iterate(pAC->mpMatList);
+	const StringList	*pCur	=SZList_Iterate(pMats);
 
 	while(pCur != NULL)
 	{
@@ -922,6 +933,8 @@ static void sLoadMaterialLib(AppContext *pAC, Event *pEvt)
 
 		pCur	=SZList_IteratorNext(pCur);
 	}
+
+	SZList_Clear(&pMats);
 }
 
 static void sLoadAnimLib(AppContext *pAC, Event *pEvt)
@@ -1027,27 +1040,10 @@ static void sDoMatStuff(AppContext *pAC, Event *pEvt)
 
 		goodPos.x	+=size.width * 0.75f;
 		goodPos.y	+=size.height / 4;
-
-		//I thought about trying to bump Y a bit
-		//according to the index selected, but that
-		//doesn't work if there's a scrollbar involved
-		window_origin(pAC->mpEditWnd, goodPos);
-
-		//set the text to the material's current name
-		edit_text(pAC->mpTextInput, szMatSel);
 		
-		uint32_t	ret	=window_modal(pAC->mpEditWnd, pAC->mpWnd);
-		if(ret != ekGUI_CLOSE_ESC)
-		{
-			MatLib_ReName(pAC->mpMatLib, szMatSel, edit_get_text(pAC->mpTextInput));
-
-			//change the text in the listbox too
-			int	seld	=sGetSelectedIndex(pAC->mpMaterialLB);
-			if(seld != -1)
-			{
-				listbox_set_elem(pAC->mpMaterialLB, seld, edit_get_text(pAC->mpTextInput), NULL);
-			}
-		}
+		//uint32_t	ret	=
+		sSpawnReName(pAC, goodPos, szMatSel,
+			pAC->mpMaterialLB, pAC->mpMatLib, (ReNameFunc)MatLib_ReName);
 	}
 }
 
@@ -1376,6 +1372,156 @@ static void	sFillMaterialFormValues(AppContext *pApp, const char *szMaterial)
 	}
 }
 
+static void sOnHotKeyReName(AppContext *pAC, Event *pEvt)
+{
+	unref(pEvt);
+
+	GuiControl	*pItem	=window_get_focus(pAC->mpWnd);
+
+	printf("Rename: tag %d\n", guicontrol_get_tag(pItem));
+
+	//rename only really does stuff on listboxen
+	ListBox	*pLB	=guicontrol_listbox(pItem);
+	if(pLB == NULL)
+	{
+		return;
+	}
+	int	seld	=sGetSelectedIndex(pLB);
+
+	printf("Rename ListBox Item: %d\n", seld);
+
+	if(seld -= -1)
+	{
+		return;
+	}
+	const char	*szOld	=listbox_text(pLB, seld);
+
+	V2Df	pos		=window_get_origin(pAC->mpWnd);
+	S2Df	size	=window_get_client_size(pAC->mpWnd);
+
+	V2Df	goodPos	=pos;
+
+	if(pLB == pAC->mpAnimLB)
+	{
+		goodPos.y	+=size.height * 0.75f;
+		uint32_t	result	=sSpawnReName(pAC, goodPos,
+			szOld, pLB, pAC->mpALib, (ReNameFunc)AnimLib_ReName);
+		printf("AnimBox %d\n", result);
+	}
+	else if(pLB == pAC->mpMaterialLB)
+	{
+		goodPos.x	+=size.width * 0.75f;
+		goodPos.y	+=size.height / 4;
+		uint32_t	result	=sSpawnReName(pAC, goodPos,
+			szOld, pLB, pAC->mpMatLib, (ReNameFunc)MatLib_ReName);
+		printf("MatBox %d\n", result);
+	}
+	else if(pLB == pAC->mpMeshPartLB)
+	{
+		goodPos.y	+=size.height / 4;
+
+		//also rename in meshes
+		Mesh	*pMesh	=NULL;
+		if(DictSZ_ContainsKeyccp(pAC->mpMeshes, szOld))
+		{
+			pMesh	=DictSZ_GetValueccp(pAC->mpMeshes, szOld);
+			DictSZ_Removeccp(&pAC->mpMeshes, listbox_text(pLB, seld));
+		}
+
+		uint32_t	result	=sSpawnReName(pAC, goodPos,
+			listbox_text(pLB, seld), pLB, pAC->mpChar, (ReNameFunc)Character_ReNamePart);
+
+		if(pMesh != NULL)
+		{
+			DictSZ_Addccp(&pAC->mpMeshes, edit_get_text(pAC->mpTextInput), pMesh);
+			Mesh_SetName(pMesh, edit_get_text(pAC->mpTextInput));
+		}
+		printf("MeshBox %d\n", result);
+	}
+}
+
+static void sOnHotKeyDelete(AppContext *pAC, Event *pEvt)
+{
+	unref(pEvt);
+
+	GuiControl	*pItem	=window_get_focus(pAC->mpWnd);
+
+	printf("delete: tag %d\n", guicontrol_get_tag(pItem));
+
+	//delete only really does stuff on listboxen
+	ListBox	*pLB	=guicontrol_listbox(pItem);
+	if(pLB == NULL)
+	{
+		return;
+	}
+	int	seld	=sGetSelectedIndex(pLB);
+
+	printf("Delete ListBox Item: %d\n", seld);
+
+	if(seld == -1)
+	{
+		return;
+	}
+	const char	*szItem	=listbox_text(pLB, seld);
+
+	if(pLB == pAC->mpAnimLB)
+	{
+		AnimLib_Delete(pAC->mpALib, szItem);
+		SZList_Remove(&pAC->mpAnimList, szItem);
+	}
+	else if(pLB == pAC->mpMaterialLB)
+	{
+		Material	*pMat	=MatLib_GetMaterial(pAC->mpMatLib, szItem);
+		MatLib_Remove(pAC->mpMatLib, szItem);
+		free(pMat);
+	}
+	else if(pLB == pAC->mpMeshPartLB)
+	{
+		Character_DeletePart(pAC->mpChar, szItem);
+
+		//also nuke in meshes
+		Mesh	*pMesh	=NULL;
+		if(DictSZ_ContainsKeyccp(pAC->mpMeshes, szItem))
+		{
+			pMesh	=DictSZ_GetValueccp(pAC->mpMeshes, szItem);
+			DictSZ_Removeccp(&pAC->mpMeshes, listbox_text(pLB, seld));
+			Mesh_Destroy(pMesh);
+		}
+	}
+
+	sDeleteListBoxItem(pLB, seld);
+}
+
+static void sDeleteListBoxItem(ListBox *pLB, int idx)
+{
+	int	count	=listbox_count(pLB);
+
+	//copy contents
+	UT_string	*pContents[count];
+	for(int i=0;i < count;i++)
+	{
+		utstring_new(pContents[i]);
+		utstring_printf(pContents[i], "%s", listbox_text(pLB, i));
+	}
+
+	//clear lb
+	listbox_clear(pLB);
+
+	for(int i=0;i < count;i++)
+	{
+		if(i == idx)
+		{
+			continue;
+		}
+		listbox_add_elem(pLB, utstring_body(pContents[i]), NULL);
+	}
+
+	for(int i=0;i < count;i++)
+	{
+		utstring_done(pContents[i]);
+	}
+}
+
 static void sMatSelectionChanged(AppContext *pAC, Event *pEvt)
 {
 	unref(pEvt);
@@ -1477,4 +1623,29 @@ static const Material	*sGetSelectedConstMaterial(AppContext *pApp)
 	const char	*szMatSel	=sGetSelectedMaterialName(pApp);
 
 	return	MatLib_GetConstMaterial(pApp->mpMatLib, szMatSel);
+}
+
+static uint32_t	sSpawnReName(
+	AppContext *pApp, V2Df pos, const char *szOld,
+	ListBox *pLB, void *pItem, ReNameFunc reName)
+{
+	window_origin(pApp->mpEditWnd, pos);
+
+	//set the text to the material's current name
+	edit_text(pApp->mpTextInput, szOld);
+	
+	uint32_t	ret	=window_modal(pApp->mpEditWnd, pApp->mpWnd);
+	if(ret != ekGUI_CLOSE_ESC)
+	{
+		//rename the actual item
+		reName(pItem, szOld, edit_get_text(pApp->mpTextInput));
+
+		//change the text in the listbox too
+		int	seld	=sGetSelectedIndex(pLB);
+		if(seld != -1)
+		{
+			listbox_set_elem(pLB, seld, edit_get_text(pApp->mpTextInput), NULL);
+		}
+	}
+	return	ret;
 }
