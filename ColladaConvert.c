@@ -371,6 +371,7 @@ static AppContext	*sAppCreate(void)
 	pApp->mpAnimLB		=listbox_create();
 
 	pApp->mpTextInput	=edit_create();
+	edit_autoselect(pApp->mpTextInput, true);
 
 	layout_button(pLay, pB0, 0, 0);
 	layout_button(pLay, pB1, 1, 0);
@@ -1031,6 +1032,9 @@ static void sDoMatStuff(AppContext *pAC, Event *pEvt)
 		//according to the index selected, but that
 		//doesn't work if there's a scrollbar involved
 		window_origin(pAC->mpEditWnd, goodPos);
+
+		//set the text to the material's current name
+		edit_text(pAC->mpTextInput, szMatSel);
 		
 		uint32_t	ret	=window_modal(pAC->mpEditWnd, pAC->mpWnd);
 		if(ret != ekGUI_CLOSE_ESC)
