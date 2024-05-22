@@ -6,6 +6,7 @@
 #include	"UtilityLib/ListStuff.h"
 #include	"UtilityLib/StringStuff.h"
 #include	"UtilityLib/DictionaryStuff.h"
+#include	"UtilityLib/UserSettings.h"
 #include	"MaterialLib/StuffKeeper.h"
 #include	"MaterialLib/Material.h"
 #include	"MaterialLib/MaterialLib.h"
@@ -31,12 +32,20 @@
 //will likely grow
 typedef struct AppContext_t
 {
+	//user settings
+	UserSettings	*mpUS;
+
 	//gui windows
 	Window	*mpWnd;
 	Window	*mpMatWnd;
 	Window	*mpTexWnd;	//pops up a texture choice
 	Window	*mpEditWnd;	//for editing text
 
+	//window pos assgoblinry
+	bool	mbPosDiffTaken;
+	vec2	mPosDiff;
+
+	//grogstuff
 	GraphicsDevice	*mpGD;
 	GameCamera		*mpCam;
 	StuffKeeper		*mpSK;
@@ -145,6 +154,26 @@ static void	sDoMatStuff(AppContext *pAC, Event *pEvt);		//contextual
 static void	sOnHotKeyReName(AppContext *pAC, Event *pEvt);	//F2
 static void	sOnHotKeyDelete(AppContext *pAC, Event *pEvt);	//F2
 
+
+static void	sSaveWindowPositions(AppContext *pApp)
+{
+	V2Df	pos	=window_get_origin(pApp->mpWnd);
+	UserSettings_AddPosition(pApp->mpUS, "MainWindow", pos.x, pos.y);
+
+	pos	=window_get_origin(pApp->mpMatWnd);
+	UserSettings_AddPosition(pApp->mpUS, "MaterialWindow", pos.x, pos.y);
+
+	vec2	goblinPos;
+	goblinPos[0]	=GD_GetPosX(pApp->mpGD);
+	goblinPos[1]	=GD_GetPosY(pApp->mpGD);
+
+	glm_vec2_sub(goblinPos, pApp->mPosDiff, goblinPos);
+
+	UserSettings_AddPosition(pApp->mpUS, "3DWindow", goblinPos[0], goblinPos[1]);
+
+	UserSettings_Save(pApp->mpUS);
+}
+
 static Window	*sCreateWindow(void)
 {
 	Window	*pWnd	=window_create(ekWINDOW_STD | ekWINDOW_ESC | ekWINDOW_RETURN | ekWINDOW_RESIZE);
@@ -161,7 +190,7 @@ static void sOnClose(AppContext *pApp, Event *e)
 	bool_t	*pClose	=event_result(e, bool_t);
 	
 	cassert_no_null(pApp);
-	
+
 	switch(p->origin)
 	{
 		case ekGUI_CLOSE_ESC:
@@ -226,8 +255,11 @@ static void	sCreateMatWindow(AppContext *pApp)
 	
 	window_title(pApp->mpMatWnd, "Material");
 
+	vec2	mwPos;
+	UserSettings_GetPosition(pApp->mpUS, "MaterialWindow", mwPos);
+
 	//eventually want this to tag alongside the main window
-	window_origin(pApp->mpMatWnd, v2df(100.f, 200.f));
+	window_origin(pApp->mpMatWnd, v2df(mwPos[0], mwPos[1]));
 
 	pApp->mpTexWnd	=window_create(ekWINDOW_ESC | ekWINDOW_RETURN | ekWINDOW_RESIZE);
 
@@ -348,12 +380,18 @@ static void	sCreateMatWindow(AppContext *pApp)
 static AppContext	*sAppCreate(void)
 {
 	AppContext	*pApp	=heap_new0(AppContext);
+
+	pApp->mpUS	=UserSettings_Create();
+	UserSettings_Load(pApp->mpUS);
 	
 	gui_language("");
 	pApp->mpWnd		=sCreateWindow();
 	pApp->mpEditWnd	=window_create(ekWINDOW_ESC | ekWINDOW_RETURN | ekWINDOW_RESIZE);
 
-	window_origin(pApp->mpWnd, v2df(500.f, 200.f));
+	vec2	mwPos;
+	UserSettings_GetPosition(pApp->mpUS, "MainWindow", mwPos);
+
+	window_origin(pApp->mpWnd, v2df(mwPos[0], mwPos[1]));
 	window_OnClose(pApp->mpWnd, listener(pApp, sOnClose, AppContext));
 	window_show(pApp->mpWnd);
 
@@ -424,8 +462,23 @@ static AppContext	*sAppCreate(void)
 	pApp->mpInp	=INP_CreateInput();
 	SetupKeyBinds(pApp->mpInp);
 
-	GD_Init(&pApp->mpGD, "Collada Tool", RESX, RESY, D3D_FEATURE_LEVEL_11_0);
-	
+	//SDL is a pain in the ass
+	pApp->mbPosDiffTaken	=false;
+
+	//Get position gives the client topleft
+	//Create takes a position that is the topleft of the full window
+	//so if you save and restore with w title bar, it bumps itself
+	//down every launch.
+	vec2	SDLWinPos;
+	UserSettings_GetPosition(pApp->mpUS, "3DWindow", SDLWinPos);
+
+	GD_Init(&pApp->mpGD, "Collada Tool",
+		SDLWinPos[0], SDLWinPos[1], RESX, RESY, false,
+		D3D_FEATURE_LEVEL_11_0);
+
+	//turn on border
+	GD_SetWindowBordered(pApp->mpGD, true);
+
 	SetupRastVP(pApp->mpGD);
 
 	pApp->mpSK	=StuffKeeper_Create(pApp->mpGD);
@@ -492,6 +545,8 @@ static AppContext	*sAppCreate(void)
 
 static void	sAppDestroy(AppContext **ppApp)
 {
+	sSaveWindowPositions(*ppApp);
+
 	GD_Destroy(&((*ppApp)->mpGD));
 
 	window_destroy(&(*ppApp)->mpWnd);
@@ -577,6 +632,23 @@ static void sRender(AppContext *pApp, const real64_t prTime, const real64_t cTim
 	PP_DrawStage(pApp->mpPP, pApp->mpGD, pApp->mpCBK);
 
 	GD_Present(pApp->mpGD);
+
+	//have to do this window position difference after
+	//present has run 
+	if(!pApp->mbPosDiffTaken)
+	{
+		vec2	SDLWinPos;
+		UserSettings_GetPosition(pApp->mpUS, "3DWindow", SDLWinPos);
+
+		//store the difference
+		vec2	goblinPos;
+		goblinPos[0]	=GD_GetPosX(pApp->mpGD);
+		goblinPos[1]	=GD_GetPosY(pApp->mpGD);
+
+		glm_vec2_sub(goblinPos, SDLWinPos, pApp->mPosDiff);
+
+		pApp->mbPosDiffTaken	=true;
+	}
 }
 
 static void sAppUpdate(AppContext *pApp, const real64_t prTime, const real64_t cTime)

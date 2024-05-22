@@ -5,6 +5,7 @@
         "osmain.h": "c",
         "nappgui.h": "c",
         "buttons.h": "c",
-        "stringstuff.h": "c"
+        "stringstuff.h": "c",
+        "material.h": "c"
     }
 }

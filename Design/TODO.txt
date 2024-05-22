@@ -8,8 +8,8 @@ x	SRV0 and 1 images
 x	Texture list when click srv
 x	Create new material somehow?
 x	key handling (f2, del)
-	Maybe select material when mesh part is selected (if mat exists)
-	Save form positions and reload on start
+x	Maybe select material when mesh part is selected (if mat exists)
+x	Save form positions and reload on start
 	Character with 0 0 0 trilight showing fully lit
 	Border around srv gui
 	Don't copy alpha channel for SRV (clearer image)
