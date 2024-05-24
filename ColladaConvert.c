@@ -323,6 +323,12 @@ static void	sCreateMatWindow(AppContext *pApp)
 	imageview_size(pApp->mpSRV0, s2di(64, 64));
 	imageview_size(pApp->mpSRV1, s2di(64, 64));
 
+	//SRV Labels
+	Label	*pSL0	=label_create();
+	Label	*pSL1	=label_create();
+	label_text(pSL0, "SRV0->");
+	label_text(pSL1, "SRV1->");
+
 	//shader combos at the top
 	layout_popup(pLay, pApp->mpShaderFile, 0, 0);
 	layout_popup(pLay, pApp->mpVSPop, 1, 0);
@@ -338,10 +344,14 @@ static void	sCreateMatWindow(AppContext *pApp)
 	layout_button(pLay, pApp->mpSpec, 1, 2);
 	layout_label(pLay, pSPowL, 2, 1);
 	layout_slider(pLay, pApp->mpSPow, 3, 1);
-	layout_label(pLay, pApp->mpPowVal, 4, 1);	
+	layout_label(pLay, pApp->mpPowVal, 4, 1);
+	layout_label(pLay, pSL0, 2, 2);
+	layout_label(pLay, pSL1, 2, 3);
 
-	//right align the spec power label
+	//right aligned labels
 	layout_halign(pLay, 2, 1, ekRIGHT);
+	layout_halign(pLay, 2, 2, ekRIGHT);
+	layout_halign(pLay, 2, 3, ekRIGHT);
 
 	//images
 	layout_imageview(pLay, pApp->mpSRV0, 3, 2);
