@@ -6,6 +6,7 @@
         "nappgui.h": "c",
         "buttons.h": "c",
         "stringstuff.h": "c",
-        "material.h": "c"
+        "material.h": "c",
+        "graphicsdevice.h": "c"
     }
 }

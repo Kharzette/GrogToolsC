@@ -114,6 +114,7 @@ static const Image		*sCreateTexImage(const UT_string *szTex);
 static bool				sSelectPopupItem(PopUp *pPop, const char *pSZ);
 static int 				sGetSelectedIndex(const ListBox *pLB);
 static void				sDeleteListBoxItem(ListBox *pLB, int idx);
+static void				sSetDefaultCel(AppContext *pApp);
 static uint32_t			sSpawnReName(AppContext *pApp, V2Df pos, const char *szOld,
 							ListBox *pLB, void *pItem, ReNameFunc reName);
 
@@ -510,6 +511,9 @@ static AppContext	*sAppCreate(void)
 	pApp->mpCBK	=CBK_Create(pApp->mpGD);
 	pApp->mpPP	=PP_Create(pApp->mpGD, pApp->mpSK, pApp->mpCBK);
 
+	//default cel shading
+	sSetDefaultCel(pApp);
+	
 	//set sky gradient
 	{
 		vec3	skyHorizon	={	0.0f, 0.5f, 1.0f	};
@@ -713,7 +717,7 @@ static void	SetupKeyBinds(Input *pInp)
 	INP_MakeBinding(pInp, INP_BIND_TYPE_HELD, SDLK_t, KeyTurnDownEH);
 
 	//move data events
-	INP_MakeBinding(pInp, INP_BIND_TYPE_MOVE, SDL_MOUSEMOTION, MouseMoveEH);
+	INP_MakeBinding(pInp, INP_BIND_TYPE_MOVE, SDL_EVENT_MOUSE_MOTION, MouseMoveEH);
 
 	//down/up events
 	INP_MakeBinding(pInp, INP_BIND_TYPE_PRESS, SDL_BUTTON_RIGHT, RightMouseDownEH);
@@ -1766,4 +1770,15 @@ static uint32_t	sSpawnReName(
 		}
 	}
 	return	ret;
+}
+
+static void	sSetDefaultCel(AppContext *pApp)
+{
+	float	mins[4]	={	0.0f, 0.3f, 0.6f, 1.0f	};
+	float	maxs[4]	={	0.3f, 0.6f, 1.0f, 5.0f	};
+	float	snap[4]	={	0.3f, 0.5f, 0.9f, 1.4f	};
+
+	CBK_SetCelSteps(pApp->mpCBK, mins, maxs, snap, 4);
+
+	CBK_UpdateCel(pApp->mpCBK, pApp->mpGD);
 }

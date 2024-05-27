@@ -119,6 +119,31 @@
             },
             "problemMatcher": [],
             "detail": "make build task"
+        },
+        {
+            "type": "shell",
+            "label": "Compile Shaders",
+            "command": "${workspaceFolder}/GrogLibsC/GrogHLSLCompileTool/bin/Debug/net6.0/GrogHLSLCompileTool",
+            "args": ["${workspaceFolder}/GrogLibsC/ShaderLib", "SM4", "SM41", "SM5"],    //add more if you want SM2 SM4 etc
+            "group": "build",
+            "options": {"cwd": "/mnt/SkyFather/Games/CurrentGame"},
+            "problemMatcher": [
+                {
+                    "owner": "fxc",
+                    "fileLocation":"relative",
+                    "pattern": {
+                        "regexp": "(.+(?=\\())\\((.+?(?=,))\\(?,(.+?(?=[-]))[-](.+?(?=\\)))\\)\\:\\s*(warning|error)\\s*(\\w*):*\\(?(.*)",
+                        "file": 1,
+                        "line": 2,
+                        "column": 3,
+                        "endColumn": 4,
+                        "severity": 5,
+                        "code": 6,
+                        "message": 7
+                    }
+                }
+            ],
+            "detail": "hlsl build task"
         }
 	]
 }
