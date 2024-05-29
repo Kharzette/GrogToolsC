@@ -611,10 +611,13 @@ static void sRender(AppContext *pApp, const real64_t prTime, const real64_t cTim
 	}
 
 
-	PP_SetTargets(pApp->mpPP, pApp->mpGD, "LinearColor", "LinearDepth");
+//	PP_SetTargets(pApp->mpPP, pApp->mpGD, "LinearColor", "LinearDepth");
+	PP_SetTargets(pApp->mpPP, pApp->mpGD, "BackColor", "BackDepth");
 
-	PP_ClearDepth(pApp->mpPP, pApp->mpGD, "LinearDepth");
-	PP_ClearTarget(pApp->mpPP, pApp->mpGD, "LinearColor");
+//	PP_ClearDepth(pApp->mpPP, pApp->mpGD, "LinearDepth");
+//	PP_ClearTarget(pApp->mpPP, pApp->mpGD, "LinearColor");
+	PP_ClearDepth(pApp->mpPP, pApp->mpGD, "BackDepth");
+	PP_ClearTarget(pApp->mpPP, pApp->mpGD, "BackColor");
 
 	//update frame CB
 	CBK_UpdateFrame(pApp->mpCBK, pApp->mpGD);
@@ -638,12 +641,12 @@ static void sRender(AppContext *pApp, const real64_t prTime, const real64_t cTim
 						pApp->mpALib, pApp->mpGD, pApp->mpCBK);
 	}
 
-	PP_ClearDepth(pApp->mpPP, pApp->mpGD, "BackDepth");
-	PP_SetTargets(pApp->mpPP, pApp->mpGD, "BackColor", "BackDepth");
+//	PP_ClearDepth(pApp->mpPP, pApp->mpGD, "BackDepth");
+//	PP_SetTargets(pApp->mpPP, pApp->mpGD, "BackColor", "BackDepth");
 
-	PP_SetSRV(pApp->mpPP, pApp->mpGD, "LinearColor", 1);	//1 for colortex
+//	PP_SetSRV(pApp->mpPP, pApp->mpGD, "LinearColor", 1);	//1 for colortex
 
-	PP_DrawStage(pApp->mpPP, pApp->mpGD, pApp->mpCBK);
+//	PP_DrawStage(pApp->mpPP, pApp->mpGD, pApp->mpCBK);
 
 	GD_Present(pApp->mpGD);
 
@@ -901,7 +904,7 @@ static void	KeyTurnLeftEH(void *pContext, const SDL_Event *pEvt)
 
 	assert(pTS);
 
-	pTS->mDeltaYaw	+=KEYTURN_RATE;
+	pTS->mDeltaYaw	-=KEYTURN_RATE;
 }
 
 static void	KeyTurnRightEH(void *pContext, const SDL_Event *pEvt)
@@ -910,7 +913,7 @@ static void	KeyTurnRightEH(void *pContext, const SDL_Event *pEvt)
 
 	assert(pTS);
 
-	pTS->mDeltaYaw	-=KEYTURN_RATE;
+	pTS->mDeltaYaw	+=KEYTURN_RATE;
 }
 
 static void	KeyTurnUpEH(void *pContext, const SDL_Event *pEvt)
