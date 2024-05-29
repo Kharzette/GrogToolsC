@@ -11,7 +11,7 @@ x	key handling (f2, del)
 x	Maybe select material when mesh part is selected (if mat exists)
 x	Save form positions and reload on start
 no	Border around srv gui
-	Set up a default cel table
-	move color picker near mat window when popping up
+x	Set up a default cel table
+x	move color picker near mat window when popping up
 	Don't copy alpha channel for SRV (clearer image)
 	Fix memleaks!

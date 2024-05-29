@@ -1362,7 +1362,9 @@ static void sColourButtonClicked(AppContext *pAC, Event *pEvt)
 	__attribute_maybe_unused__
 	const EvButton	*pBtn	=event_params(pEvt, EvButton);
 
-	comwin_color(pAC->mpWnd, "Choose Colour", 100, 50, ekRIGHT, ekTOP, kCOLOR_WHITE, NULL, 0, listener(pAC, sColourChosen, AppContext));
+	V2Df	matWindowPos	=window_get_origin(pAC->mpMatWnd);
+
+	comwin_color(pAC->mpWnd, "Choose Colour", matWindowPos.x, matWindowPos.y, ekRIGHT, ekTOP, kCOLOR_WHITE, NULL, 0, listener(pAC, sColourChosen, AppContext));
 
 	GuiControl	*pCur	=window_get_focus(pAC->mpMatWnd);
 
@@ -1495,7 +1497,7 @@ static void sOnHotKeyReName(AppContext *pAC, Event *pEvt)
 
 	printf("Rename ListBox Item: %d\n", seld);
 
-	if(seld -= -1)
+	if(seld == -1)
 	{
 		return;
 	}
