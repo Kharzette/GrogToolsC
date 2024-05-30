@@ -15,6 +15,7 @@
 #include	"MeshLib/AnimLib.h"
 #include	"MeshLib/Mesh.h"
 #include	"MeshLib/Character.h"
+#include	"MeshLib/Static.h"
 #include	"MeshLib/CommonPrims.h"
 #include	"InputLib/Input.h"
 
@@ -56,7 +57,7 @@ typedef struct AppContext_t
 	//loaded data
 	AnimLib		*mpALib;
 	Character	*mpChar;
-//	StaticMesh	*mpStatic;
+	Static		*mpStatic;
 	MaterialLib	*mpMatLib;
 	DictSZ		*mpMeshes;
 
@@ -140,6 +141,8 @@ static void EscEH(void *pContext, const SDL_Event *pEvt);
 //button event handlers
 static void sLoadCharacter(AppContext *pAC, Event *pEvt);
 static void sSaveCharacter(AppContext *pAC, Event *pEvt);
+static void sLoadStatic(AppContext *pAC, Event *pEvt);
+static void sSaveStatic(AppContext *pAC, Event *pEvt);
 static void sLoadMaterialLib(AppContext *pAC, Event *pEvt);
 static void sSaveMaterialLib(AppContext *pAC, Event *pEvt);
 static void sLoadAnimLib(AppContext *pAC, Event *pEvt);
@@ -487,6 +490,8 @@ static AppContext	*sAppCreate(void)
 
 	button_OnClick(pLChar, listener(pApp, sLoadCharacter, AppContext));
 	button_OnClick(pSChar, listener(pApp, sSaveCharacter, AppContext));
+	button_OnClick(pLStat, listener(pApp, sLoadStatic, AppContext));
+	button_OnClick(pSStat, listener(pApp, sSaveStatic, AppContext));
 	button_OnClick(pLMat, listener(pApp, sLoadMaterialLib, AppContext));
 	button_OnClick(pSMat, listener(pApp, sSaveMaterialLib, AppContext));
 	button_OnClick(pLAnim, listener(pApp, sLoadAnimLib, AppContext));
@@ -512,6 +517,7 @@ static AppContext	*sAppCreate(void)
 
 	//null loadable meshes
 	pApp->mpChar	=NULL;
+	pApp->mpStatic	=NULL;
 
 	//input and key / mouse bindings
 	pApp->mpInp	=INP_CreateInput();
@@ -674,11 +680,21 @@ static void sRender(AppContext *pApp, const real64_t prTime, const real64_t cTim
 	GD_PSSetSampler(pApp->mpGD, StuffKeeper_GetSamplerState(pApp->mpSK, "PointClamp"), 0);
 
 	//draw mesh
-	if(pApp->mpMeshes != NULL && pApp->mpChar != NULL &&
-		pApp->mpALib != NULL && pApp->mpMatLib != NULL)
+	if(pApp->mpChar != NULL)
 	{
-		Character_Draw(pApp->mpChar, pApp->mpMeshes, pApp->mpMatLib,
-						pApp->mpALib, pApp->mpGD, pApp->mpCBK);
+		if(pApp->mpMeshes != NULL && pApp->mpALib != NULL && pApp->mpMatLib != NULL)
+		{
+			Character_Draw(pApp->mpChar, pApp->mpMeshes, pApp->mpMatLib,
+							pApp->mpALib, pApp->mpGD, pApp->mpCBK);
+		}
+	}
+	else if(pApp->mpStatic != NULL)
+	{
+		if(pApp->mpMeshes != NULL && pApp->mpMatLib != NULL)
+		{
+			Static_Draw(pApp->mpStatic, pApp->mpMeshes, pApp->mpMatLib,
+							pApp->mpGD, pApp->mpCBK);
+		}
 	}
 
 	GD_Present(pApp->mpGD);
@@ -1016,6 +1032,8 @@ static void sLoadCharacter(AppContext *pAC, Event *pEvt)
 
 		listbox_add_elem(pAC->mpMeshPartLB, SZList_IteratorVal(pCur), NULL);
 
+		utstring_clear(szFullPath);
+
 		pCur	=SZList_IteratorNext(pCur);
 	}
 
@@ -1073,6 +1091,89 @@ static void sSaveCharacter(AppContext *pAC, Event *pEvt)
 	Character_Write(pAC->mpChar, utstring_body(szFileName));
 
 	printf("Character saved...\n");
+
+	UT_string	*szPath	=SZ_StripFileName(pFileName);
+
+	//save mesh parts
+	DictSZ_ForEach(pAC->mpMeshes, sSaveMeshParts, szPath);
+
+	utstring_done(szPath);
+}
+
+static void sLoadStatic(AppContext *pAC, Event *pEvt)
+{
+	unref(pEvt);
+
+	const char	*fTypes[]	={	"Static", "static"	};
+
+	const char	*pFileName	=comwin_open_file(pAC->mpWnd, fTypes, 2, NULL);
+
+	printf("Static load fileName: %s\n", pFileName);
+
+	if(pAC->mpStatic != NULL)
+	{
+		Static_Destroy(pAC->mpStatic);
+	}
+
+	pAC->mpStatic	=Static_Read(pFileName);
+
+	printf("Static loaded...\n");
+
+	StringList	*pParts	=Static_GetPartList(pAC->mpStatic);
+
+	DictSZ_New(&pAC->mpMeshes);
+
+	UT_string	*szPath	=SZ_StripFileName(pFileName);
+
+	UT_string	*szFullPath;
+	utstring_new(szFullPath);
+
+	const StringList	*pCur	=SZList_Iterate(pParts);
+	while(pCur != NULL)
+	{
+		utstring_printf(szFullPath, "%s/%s.mesh", utstring_body(szPath), SZList_IteratorVal(pCur));
+
+		Mesh	*pMesh	=Mesh_Read(pAC->mpGD, pAC->mpSK, utstring_body(szFullPath), true);
+
+		DictSZ_Add(&pAC->mpMeshes, SZList_IteratorValUT(pCur), pMesh);
+
+		listbox_add_elem(pAC->mpMeshPartLB, SZList_IteratorVal(pCur), NULL);
+
+		utstring_clear(szFullPath);
+
+		pCur	=SZList_IteratorNext(pCur);
+	}
+
+	SZList_Clear(&pParts);
+}
+
+static void sSaveStatic(AppContext *pAC, Event *pEvt)
+{
+	unref(pEvt);
+
+	const char	*fTypes[]	={	"Static", "static"	};
+
+	const char	*pFileName	=comwin_save_file(pAC->mpWnd, fTypes, 2, NULL);
+
+	UT_string	*szFileName;
+	utstring_new(szFileName);
+
+	UT_string	*szExt	=SZ_GetExtension(pFileName);
+	if(szExt == NULL)
+	{
+		utstring_printf(szFileName, "%s.Static", pFileName);
+	}
+	else
+	{
+		utstring_printf(szFileName, "%s", pFileName);
+		utstring_done(szExt);
+	}
+
+	printf("Static save fileName: %s\n", utstring_body(szFileName));
+
+	Static_Write(pAC->mpStatic, utstring_body(szFileName));
+
+	printf("Static saved...\n");
 
 	UT_string	*szPath	=SZ_StripFileName(pFileName);
 
@@ -1218,7 +1319,14 @@ static void sAssignMaterial(AppContext *pAC, Event *pEvt)
 	const char	*szMatSel	=sGetSelectedMaterialName(pAC);
 	int	meshSelected		=sGetSelectedMeshPartIndex(pAC);
 
-	Character_AssignMaterial(pAC->mpChar, meshSelected, szMatSel);
+	if(pAC->mpChar != NULL)
+	{
+		Character_AssignMaterial(pAC->mpChar, meshSelected, szMatSel);
+	}
+	else
+	{
+		Static_AssignMaterial(pAC->mpStatic, meshSelected, szMatSel);
+	}
 
 	printf("Assigned material %s to mesh part %d\n", szMatSel, meshSelected);
 }
@@ -1694,8 +1802,18 @@ static void sOnHotKeyReName(AppContext *pAC, Event *pEvt)
 			DictSZ_Removeccp(&pAC->mpMeshes, listbox_text(pLB, seld));
 		}
 
-		uint32_t	result	=sSpawnReName(pAC, goodPos,
-			listbox_text(pLB, seld), pLB, pAC->mpChar, (ReNameFunc)Character_ReNamePart);
+		uint32_t	result;
+
+		if(pAC->mpChar != NULL)
+		{
+			result	=sSpawnReName(pAC, goodPos,
+				listbox_text(pLB, seld), pLB, pAC->mpChar, (ReNameFunc)Character_ReNamePart);
+		}
+		else if(pAC->mpStatic != NULL)
+		{
+			result	=sSpawnReName(pAC, goodPos,
+				listbox_text(pLB, seld), pLB, pAC->mpStatic, (ReNameFunc)Static_ReNamePart);
+		}
 
 		if(pMesh != NULL)
 		{
@@ -1819,7 +1937,19 @@ static void sMeshSelectionChanged(AppContext *pAC, Event *pEvt)
 
 	const char	*szMesh	=listbox_text(pAC->mpMeshPartLB, seld);
 
-	const char	*szMat	=Character_GetMaterialForPart(pAC->mpChar, szMesh);
+	char	*szMat;
+	if(pAC->mpChar != NULL)
+	{
+		szMat	=Character_GetMaterialForPart(pAC->mpChar, szMesh);
+	}
+	else if(pAC->mpStatic != NULL)
+	{
+		szMat	=Static_GetMaterialForPart(pAC->mpStatic, szMesh);
+	}
+	else
+	{
+		return;
+	}
 
 	if(sSelectListBoxItem(pAC->mpMaterialLB, szMat))
 	{

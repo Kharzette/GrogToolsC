@@ -14,6 +14,10 @@ no	Border around srv gui
 x	Set up a default cel table
 x	move color picker near mat window when popping up
 x	Save buttons
+x	Statics
+	Better error prints
+	Basic collision shape editing
+	Bone collision shape editing
 	Don't copy alpha channel for SRV (clearer image)
 	Fix memleaks!
 
