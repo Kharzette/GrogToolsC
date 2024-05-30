@@ -1065,8 +1065,8 @@ static void sSaveCharacter(AppContext *pAC, Event *pEvt)
 	else
 	{
 		utstring_printf(szFileName, "%s", pFileName);
+		utstring_done(szExt);
 	}
-	utstring_done(szExt);
 
 	printf("Character save fileName: %s\n", utstring_body(szFileName));
 
@@ -1124,13 +1124,30 @@ static void sSaveMaterialLib(AppContext *pAC, Event *pEvt)
 	const char	*fTypes[]	={	"MatLib", "Matlib", "matlib"	};
 
 	const char	*pFileName	=comwin_save_file(pAC->mpWnd, fTypes, 3, NULL);
-
-	printf("MaterialLib save fileName: %s\n", pFileName);
-
 	if(pFileName == NULL)
 	{
 		return;
 	}
+
+	UT_string	*szFileName;
+	utstring_new(szFileName);
+
+	UT_string	*szExt	=SZ_GetExtension(pFileName);
+	if(szExt == NULL)
+	{
+		utstring_printf(szFileName, "%s.MatLib", pFileName);
+	}
+	else
+	{
+		utstring_printf(szFileName, "%s", pFileName);
+		utstring_done(szExt);
+	}
+
+	printf("MaterialLib save fileName: %s\n", utstring_body(szFileName));
+
+	MatLib_Write(pAC->mpMatLib, utstring_body(szFileName));
+
+	printf("Material lib saved...\n");
 }
 
 static void sLoadAnimLib(AppContext *pAC, Event *pEvt)
