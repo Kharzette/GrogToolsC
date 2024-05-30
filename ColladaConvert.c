@@ -1000,6 +1000,11 @@ static void sLoadCharacter(AppContext *pAC, Event *pEvt)
 	const char	*fTypes[]	={	"Character", "character"	};
 
 	const char	*pFileName	=comwin_open_file(pAC->mpWnd, fTypes, 2, NULL);
+	if(pFileName == NULL)
+	{
+		printf("Empty filename for Load.\n");
+		return;
+	}
 
 	printf("Character load fileName: %s\n", pFileName);
 
@@ -1071,6 +1076,11 @@ static void sSaveCharacter(AppContext *pAC, Event *pEvt)
 	const char	*fTypes[]	={	"Character", "character"	};
 
 	const char	*pFileName	=comwin_save_file(pAC->mpWnd, fTypes, 2, NULL);
+	if(pFileName == NULL)
+	{
+		printf("Empty filename for Save.\n");
+		return;
+	}
 
 	UT_string	*szFileName;
 	utstring_new(szFileName);
@@ -1107,6 +1117,11 @@ static void sLoadStatic(AppContext *pAC, Event *pEvt)
 	const char	*fTypes[]	={	"Static", "static"	};
 
 	const char	*pFileName	=comwin_open_file(pAC->mpWnd, fTypes, 2, NULL);
+	if(pFileName == NULL)
+	{
+		printf("Empty filename for Load.\n");
+		return;
+	}
 
 	printf("Static load fileName: %s\n", pFileName);
 
@@ -1154,6 +1169,11 @@ static void sSaveStatic(AppContext *pAC, Event *pEvt)
 	const char	*fTypes[]	={	"Static", "static"	};
 
 	const char	*pFileName	=comwin_save_file(pAC->mpWnd, fTypes, 2, NULL);
+	if(pFileName == NULL)
+	{
+		printf("Empty filename for Save.\n");
+		return;
+	}
 
 	UT_string	*szFileName;
 	utstring_new(szFileName);
@@ -1190,13 +1210,13 @@ static void sLoadMaterialLib(AppContext *pAC, Event *pEvt)
 	const char	*fTypes[]	={	"MatLib", "Matlib", "matlib"	};
 
 	const char	*pFileName	=comwin_open_file(pAC->mpWnd, fTypes, 3, NULL);
-
-	printf("MaterialLib load fileName: %s\n", pFileName);
-
 	if(pFileName == NULL)
 	{
+		printf("Empty filename for Load.\n");
 		return;
 	}
+
+	printf("MaterialLib load fileName: %s\n", pFileName);
 
 	pAC->mpMatLib	=MatLib_Read(pFileName, pAC->mpSK);
 
@@ -1227,6 +1247,7 @@ static void sSaveMaterialLib(AppContext *pAC, Event *pEvt)
 	const char	*pFileName	=comwin_save_file(pAC->mpWnd, fTypes, 3, NULL);
 	if(pFileName == NULL)
 	{
+		printf("Empty filename for Save.\n");
 		return;
 	}
 
@@ -1258,6 +1279,11 @@ static void sLoadAnimLib(AppContext *pAC, Event *pEvt)
 	const char	*fTypes[]	={	"AnimLib", "Animlib", "animlib"	};
 
 	const char	*pFileName	=comwin_open_file(pAC->mpWnd, fTypes, 3, NULL);
+	if(pFileName == NULL)
+	{
+		printf("Empty filename for Load.\n");
+		return;
+	}
 
 	printf("AnimLib load fileName: %s\n", pFileName);
 
@@ -1288,6 +1314,7 @@ static void sSaveAnimLib(AppContext *pAC, Event *pEvt)
 	const char	*pFileName	=comwin_save_file(pAC->mpWnd, fTypes, 3, NULL);
 	if(pFileName == NULL)
 	{
+		printf("Empty filename for Save.\n");
 		return;
 	}
 
@@ -1937,23 +1964,25 @@ static void sMeshSelectionChanged(AppContext *pAC, Event *pEvt)
 
 	const char	*szMesh	=listbox_text(pAC->mpMeshPartLB, seld);
 
-	char	*szMat;
 	if(pAC->mpChar != NULL)
 	{
-		szMat	=Character_GetMaterialForPart(pAC->mpChar, szMesh);
+		const char	*szMat	=Character_GetMaterialForPart(pAC->mpChar, szMesh);
+		if(sSelectListBoxItem(pAC->mpMaterialLB, szMat))
+		{
+			sMatSelectionChanged(pAC, NULL);
+		}
 	}
 	else if(pAC->mpStatic != NULL)
 	{
-		szMat	=Static_GetMaterialForPart(pAC->mpStatic, szMesh);
+		const char	*szMat	=Static_GetMaterialForPart(pAC->mpStatic, szMesh);
+		if(sSelectListBoxItem(pAC->mpMaterialLB, szMat))
+		{
+			sMatSelectionChanged(pAC, NULL);
+		}
 	}
 	else
 	{
 		return;
-	}
-
-	if(sSelectListBoxItem(pAC->mpMaterialLB, szMat))
-	{
-		sMatSelectionChanged(pAC, NULL);
 	}
 }
 
