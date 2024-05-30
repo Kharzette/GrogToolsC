@@ -13,7 +13,7 @@ x	Save form positions and reload on start
 no	Border around srv gui
 x	Set up a default cel table
 x	move color picker near mat window when popping up
-	Save buttons
+x	Save buttons
 	Don't copy alpha channel for SRV (clearer image)
 	Fix memleaks!
 

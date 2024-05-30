@@ -1185,8 +1185,30 @@ static void sSaveAnimLib(AppContext *pAC, Event *pEvt)
 	const char	*fTypes[]	={	"AnimLib", "Animlib", "animlib"	};
 
 	const char	*pFileName	=comwin_save_file(pAC->mpWnd, fTypes, 3, NULL);
+	if(pFileName == NULL)
+	{
+		return;
+	}
 
-	printf("AnimLib save fileName: %s\n", pFileName);
+	UT_string	*szFileName;
+	utstring_new(szFileName);
+
+	UT_string	*szExt	=SZ_GetExtension(pFileName);
+	if(szExt == NULL)
+	{
+		utstring_printf(szFileName, "%s.AnimLib", pFileName);
+	}
+	else
+	{
+		utstring_printf(szFileName, "%s", pFileName);
+		utstring_done(szExt);
+	}
+
+	printf("AnimLib save fileName: %s\n", utstring_body(szFileName));
+
+	AnimLib_Write(pAC->mpALib, utstring_body(szFileName));
+
+	printf("Animation library saved...\n");
 }
 
 static void sAssignMaterial(AppContext *pAC, Event *pEvt)
