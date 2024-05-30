@@ -139,8 +139,11 @@ static void EscEH(void *pContext, const SDL_Event *pEvt);
 
 //button event handlers
 static void sLoadCharacter(AppContext *pAC, Event *pEvt);
+static void sSaveCharacter(AppContext *pAC, Event *pEvt);
 static void sLoadMaterialLib(AppContext *pAC, Event *pEvt);
+static void sSaveMaterialLib(AppContext *pAC, Event *pEvt);
 static void sLoadAnimLib(AppContext *pAC, Event *pEvt);
+static void sSaveAnimLib(AppContext *pAC, Event *pEvt);
 static void sAssignMaterial(AppContext *pAC, Event *pEvt);
 static void sShaderFileChanged(AppContext *pAC, Event *pEvt);
 static void sShaderChanged(AppContext *pAC, Event *pEvt);
@@ -414,16 +417,31 @@ static AppContext	*sAppCreate(void)
 	Layout	*pEditLay	=layout_create(1, 1);
 	layout_margin(pLay, 10);
 
-	Button	*pB0		=button_push();
-	Button	*pB1		=button_push();
-	Button	*pB2		=button_push();
-	Button	*pB3		=button_push();
+	//sublayouts for save / load buttons
+	Layout	*pSavLoadMeshLay	=layout_create(2, 2);
+	Layout	*pSavLoadMatLay		=layout_create(1, 2);
+	Layout	*pSavLoadAnimLay	=layout_create(1, 2);
+
+	Button	*pLChar		=button_push();
+	Button	*pSChar		=button_push();
+	Button	*pLMat		=button_push();
+	Button	*pSMat		=button_push();
+	Button	*pLAnim		=button_push();
+	Button	*pSAnim		=button_push();
+	Button	*pLStat		=button_push();
+	Button	*pSStat		=button_push();
+	Button	*pAssMat	=button_push();
 	pApp->mpMatStuff	=button_push();
 
-	button_text(pB0, "Load Character");
-	button_text(pB1, "Load MatLib");
-	button_text(pB2, "Load AnimLib");
-	button_text(pB3, "<- Assign Material <-");
+	button_text(pLChar, "Load Character");
+	button_text(pSChar, "Save Character");
+	button_text(pLStat, "Load Static");
+	button_text(pSStat, "Save Static");
+	button_text(pLMat, "Load MatLib");
+	button_text(pSMat, "Save MatLib");
+	button_text(pLAnim, "Load AnimLib");
+	button_text(pSAnim, "Save AnimLib");
+	button_text(pAssMat, "<- Assign Material <-");
 	button_text(pApp->mpMatStuff, "New Material");
 
 	pApp->mpMeshPartLB	=listbox_create();
@@ -433,21 +451,47 @@ static AppContext	*sAppCreate(void)
 	pApp->mpTextInput	=edit_create();
 	edit_autoselect(pApp->mpTextInput, true);
 
-	layout_button(pLay, pB0, 0, 0);
-	layout_button(pLay, pB1, 1, 0);
-	layout_button(pLay, pB2, 2, 0);
+	layout_layout(pLay, pSavLoadMeshLay, 0, 0);
+	layout_layout(pLay, pSavLoadMatLay, 1, 0);
+	layout_layout(pLay, pSavLoadAnimLay, 2, 0);
+
+	//put the buttons within sublayouts
+	layout_button(pSavLoadMeshLay, pLChar, 0, 0);
+	layout_button(pSavLoadMeshLay, pSChar, 0, 1);
+	layout_button(pSavLoadMeshLay, pLStat, 1, 0);
+	layout_button(pSavLoadMeshLay, pSStat, 1, 1);
+
+	layout_button(pSavLoadMatLay, pLMat, 0, 0);
+	layout_button(pSavLoadMatLay, pSMat, 0, 1);
+
+	layout_button(pSavLoadAnimLay, pLAnim, 0, 0);
+	layout_button(pSavLoadAnimLay, pSAnim, 0, 1);
+
+	//center these buttons
+	layout_halign(pSavLoadMeshLay, 0, 0, ekCENTER);
+	layout_halign(pSavLoadMeshLay, 0, 1, ekCENTER);
+	layout_halign(pSavLoadMeshLay, 1, 0, ekCENTER);
+	layout_halign(pSavLoadMeshLay, 1, 1, ekCENTER);
+	layout_halign(pSavLoadMatLay, 0, 0, ekCENTER);
+	layout_halign(pSavLoadMatLay, 0, 1, ekCENTER);
+	layout_halign(pSavLoadAnimLay, 0, 0, ekCENTER);
+	layout_halign(pSavLoadAnimLay, 0, 1, ekCENTER);
+
 	layout_listbox(pLay, pApp->mpMeshPartLB, 0, 1);
-	layout_button(pLay, pB3, 1, 1);
+	layout_button(pLay, pAssMat, 1, 1);
 	layout_listbox(pLay, pApp->mpMaterialLB, 2, 1);
 	layout_listbox(pLay, pApp->mpAnimLB, 0, 2);
 	layout_button(pLay, pApp->mpMatStuff, 2, 2);
 
 	layout_edit(pEditLay, pApp->mpTextInput, 0, 0);
 
-	button_OnClick(pB0, listener(pApp, sLoadCharacter, AppContext));
-	button_OnClick(pB1, listener(pApp, sLoadMaterialLib, AppContext));
-	button_OnClick(pB2, listener(pApp, sLoadAnimLib, AppContext));
-	button_OnClick(pB3, listener(pApp, sAssignMaterial, AppContext));
+	button_OnClick(pLChar, listener(pApp, sLoadCharacter, AppContext));
+	button_OnClick(pSChar, listener(pApp, sSaveCharacter, AppContext));
+	button_OnClick(pLMat, listener(pApp, sLoadMaterialLib, AppContext));
+	button_OnClick(pSMat, listener(pApp, sSaveMaterialLib, AppContext));
+	button_OnClick(pLAnim, listener(pApp, sLoadAnimLib, AppContext));
+	button_OnClick(pSAnim, listener(pApp, sSaveAnimLib, AppContext));
+	button_OnClick(pAssMat, listener(pApp, sAssignMaterial, AppContext));
 	listbox_OnSelect(pApp->mpMaterialLB, listener(pApp, sMatSelectionChanged, AppContext));
 	listbox_OnSelect(pApp->mpMeshPartLB, listener(pApp, sMeshSelectionChanged, AppContext));
 	button_OnClick(pApp->mpMatStuff, listener(pApp, sDoMatStuff, AppContext));
@@ -611,11 +655,7 @@ static void sRender(AppContext *pApp, const real64_t prTime, const real64_t cTim
 	}
 
 
-//	PP_SetTargets(pApp->mpPP, pApp->mpGD, "LinearColor", "LinearDepth");
 	PP_SetTargets(pApp->mpPP, pApp->mpGD, "BackColor", "BackDepth");
-
-//	PP_ClearDepth(pApp->mpPP, pApp->mpGD, "LinearDepth");
-//	PP_ClearTarget(pApp->mpPP, pApp->mpGD, "LinearColor");
 	PP_ClearDepth(pApp->mpPP, pApp->mpGD, "BackDepth");
 	PP_ClearTarget(pApp->mpPP, pApp->mpGD, "BackColor");
 
@@ -640,13 +680,6 @@ static void sRender(AppContext *pApp, const real64_t prTime, const real64_t cTim
 		Character_Draw(pApp->mpChar, pApp->mpMeshes, pApp->mpMatLib,
 						pApp->mpALib, pApp->mpGD, pApp->mpCBK);
 	}
-
-//	PP_ClearDepth(pApp->mpPP, pApp->mpGD, "BackDepth");
-//	PP_SetTargets(pApp->mpPP, pApp->mpGD, "BackColor", "BackDepth");
-
-//	PP_SetSRV(pApp->mpPP, pApp->mpGD, "LinearColor", 1);	//1 for colortex
-
-//	PP_DrawStage(pApp->mpPP, pApp->mpGD, pApp->mpCBK);
 
 	GD_Present(pApp->mpGD);
 
@@ -952,7 +985,7 @@ static void sLoadCharacter(AppContext *pAC, Event *pEvt)
 
 	const char	*pFileName	=comwin_open_file(pAC->mpWnd, fTypes, 2, NULL);
 
-	printf("FileName: %s\n", pFileName);
+	printf("Character load fileName: %s\n", pFileName);
 
 	if(pAC->mpChar != NULL)
 	{
@@ -977,7 +1010,7 @@ static void sLoadCharacter(AppContext *pAC, Event *pEvt)
 	{
 		utstring_printf(szFullPath, "%s/%s.mesh", utstring_body(szPath), SZList_IteratorVal(pCur));
 
-		Mesh	*pMesh	=Mesh_Read(pAC->mpGD, pAC->mpSK, utstring_body(szFullPath));
+		Mesh	*pMesh	=Mesh_Read(pAC->mpGD, pAC->mpSK, utstring_body(szFullPath), true);
 
 		DictSZ_Add(&pAC->mpMeshes, SZList_IteratorValUT(pCur), pMesh);
 
@@ -989,6 +1022,66 @@ static void sLoadCharacter(AppContext *pAC, Event *pEvt)
 	SZList_Clear(&pParts);
 }
 
+static void	sSaveMeshParts(const UT_string *pKey, const void *pValue, void *pContext)
+{
+	Mesh	*pMesh	=(Mesh *)pValue;
+	if(pMesh == NULL)
+	{
+		printf("Bad mesh for %s\n", utstring_body(pKey));
+		return;
+	}
+
+	printf("Saving mesh %s\n", utstring_body(pKey));
+
+	UT_string	*szPath	=(UT_string *)pContext;
+
+	UT_string	*szFullPath;
+	utstring_new(szFullPath);
+
+	utstring_printf(szFullPath, "%s/%s.mesh",
+		utstring_body(szPath), utstring_body(pKey));
+
+	Mesh_Write(pMesh, utstring_body(szFullPath));
+
+	utstring_done(szFullPath);
+}
+
+static void sSaveCharacter(AppContext *pAC, Event *pEvt)
+{
+	unref(pEvt);
+
+	const char	*fTypes[]	={	"Character", "character"	};
+
+	const char	*pFileName	=comwin_save_file(pAC->mpWnd, fTypes, 2, NULL);
+
+	UT_string	*szFileName;
+	utstring_new(szFileName);
+
+	UT_string	*szExt	=SZ_GetExtension(pFileName);
+	if(szExt == NULL)
+	{
+		utstring_printf(szFileName, "%s.Character", pFileName);
+	}
+	else
+	{
+		utstring_printf(szFileName, "%s", pFileName);
+	}
+	utstring_done(szExt);
+
+	printf("Character save fileName: %s\n", utstring_body(szFileName));
+
+	Character_Write(pAC->mpChar, utstring_body(szFileName));
+
+	printf("Character saved...\n");
+
+	UT_string	*szPath	=SZ_StripFileName(pFileName);
+
+	//save mesh parts
+	DictSZ_ForEach(pAC->mpMeshes, sSaveMeshParts, szPath);
+
+	utstring_done(szPath);
+}
+
 static void sLoadMaterialLib(AppContext *pAC, Event *pEvt)
 {
 	unref(pEvt);
@@ -997,7 +1090,7 @@ static void sLoadMaterialLib(AppContext *pAC, Event *pEvt)
 
 	const char	*pFileName	=comwin_open_file(pAC->mpWnd, fTypes, 3, NULL);
 
-	printf("FileName: %s\n", pFileName);
+	printf("MaterialLib load fileName: %s\n", pFileName);
 
 	if(pFileName == NULL)
 	{
@@ -1024,6 +1117,22 @@ static void sLoadMaterialLib(AppContext *pAC, Event *pEvt)
 	SZList_Clear(&pMats);
 }
 
+static void sSaveMaterialLib(AppContext *pAC, Event *pEvt)
+{
+	unref(pEvt);
+
+	const char	*fTypes[]	={	"MatLib", "Matlib", "matlib"	};
+
+	const char	*pFileName	=comwin_save_file(pAC->mpWnd, fTypes, 3, NULL);
+
+	printf("MaterialLib save fileName: %s\n", pFileName);
+
+	if(pFileName == NULL)
+	{
+		return;
+	}
+}
+
 static void sLoadAnimLib(AppContext *pAC, Event *pEvt)
 {
 	unref(pEvt);
@@ -1032,7 +1141,7 @@ static void sLoadAnimLib(AppContext *pAC, Event *pEvt)
 
 	const char	*pFileName	=comwin_open_file(pAC->mpWnd, fTypes, 3, NULL);
 
-	printf("FileName: %s\n", pFileName);
+	printf("AnimLib load fileName: %s\n", pFileName);
 
 	pAC->mpALib	=AnimLib_Read(pFileName);
 
@@ -1050,6 +1159,17 @@ static void sLoadAnimLib(AppContext *pAC, Event *pEvt)
 
 		pCur	=SZList_IteratorNext(pCur);
 	}
+}
+
+static void sSaveAnimLib(AppContext *pAC, Event *pEvt)
+{
+	unref(pEvt);
+
+	const char	*fTypes[]	={	"AnimLib", "Animlib", "animlib"	};
+
+	const char	*pFileName	=comwin_save_file(pAC->mpWnd, fTypes, 3, NULL);
+
+	printf("AnimLib save fileName: %s\n", pFileName);
 }
 
 static void sAssignMaterial(AppContext *pAC, Event *pEvt)
