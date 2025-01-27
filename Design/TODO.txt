@@ -15,9 +15,9 @@ x	Set up a default cel table
 x	move color picker near mat window when popping up
 x	Save buttons
 x	Statics
-	Better error prints
-	Basic collision shape editing
-	Bone collision shape editing
+x	Better error prints
+	Basic collision shape editing / display
+	Bone collision shape editing / display
 	Don't copy alpha channel for SRV (clearer image)
 	Fix memleaks!
 

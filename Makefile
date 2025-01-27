@@ -13,17 +13,15 @@ CFLAGS=-std=gnu2x -g -O0 -march=native				\
 	-Inappgui_src/src/gui							\
 	-Wall											\
 	-Wl,-rpath='libs',--disable-new-dtags
+#	-fsanitize=address								
 
 SOURCES=$(wildcard *.c)
-LIBS=-lgui -lcore -lcasino -ldraw2d -lgeom2d -losbs -losgui -lsewer -losapp -lUtilityLib -lInputLib -lMeshLib -lMaterialLib -lm
+LIBS=-lgui -lcore -lcasino -ldraw2d -lgeom2d -losbs -losgui -lsewer -losapp -lUtilityLib -lInputLib -lMeshLib -lMaterialLib -lm -lSDL2 -lFAudio
 LDFLAGS=-Llibs -Lnappgui_src/build/Debug/bin -LGrogLibsC/libs
 
 all: ColladaConvert
 
 ColladaConvert: $(SOURCES)
 	$(CC) $(CFLAGS) $(LDFLAGS) $(SOURCES) -o ColladaConvert $(LIBS)	\
-	GrogLibsC/SDL/build/libSDL3.so	\
-	GrogLibsC/libpng/build/libpng.so	\
-	GrogLibsC/AudioLib/FAudio/build/libFAudio.so	\
 	GrogLibsC/dxvk-native/build/src/dxgi/libdxvk_dxgi.so	\
 	GrogLibsC/dxvk-native/build/src/d3d11/libdxvk_d3d11.so

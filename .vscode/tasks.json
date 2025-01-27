@@ -11,8 +11,17 @@
 			"options": {"cwd": "${workspaceFolder}"},
 			"problemMatcher": [],
 			"detail": "make build task",
-			"dependsOn": [ "copyGLibs", "copySDL", "copyFAudio", "copyDXGI", "copyD3D11" ]
+			"dependsOn": [ "copyGLibs", "copyDXGI", "copyD3D11", "copyNappgui" ]
 		},
+        {
+            "type": "shell",
+            "label": "copyNappgui",
+            "command": "cp nappgui_src/build/Debug/bin/*.so ${config:CurrentGameLibs}",
+            "group": "none",
+            "options": {"cwd": "${workspaceFolder}"},
+            "problemMatcher": [],
+            "detail": "Copy gui libs to game libs directory for testing."
+        },
         {
             "type": "shell",
             "label": "copylibs",
@@ -31,22 +40,6 @@
             "options": {"cwd": "${workspaceFolder}"},
 			"dependsOn": [ "copylibs" ],
             "detail": "Copy grog libs to game libs directory for testing."
-        },
-        {
-            "type": "shell",
-            "label": "copySDL",
-            "command": "cp GrogLibsC/SDL/build/libSDL3.so.0 ${config:CurrentGameLibs}",
-            "group": "none",
-            "options": {"cwd": "${workspaceFolder}"},
-            "detail": "Copy SDL lib to game libs directory for testing."
-        },
-        {
-            "type": "shell",
-            "label": "copyFAudio",
-            "command": "cp GrogLibsC/AudioLib/FAudio/build/libFAudio.so.0 ${config:CurrentGameLibs}",
-            "group": "none",
-            "options": {"cwd": "${workspaceFolder}"},
-            "detail": "Copy FAudio lib to game libs directory for testing."
         },
         {
             "type": "shell",

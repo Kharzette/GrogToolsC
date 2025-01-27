@@ -12,9 +12,11 @@
 #include	"MaterialLib/MaterialLib.h"
 #include	"MaterialLib/CBKeeper.h"
 #include	"MaterialLib/PostProcess.h"
+#include	"MaterialLib/UIStuff.h"
 #include	"MeshLib/AnimLib.h"
 #include	"MeshLib/Mesh.h"
 #include	"MeshLib/Character.h"
+#include	"MeshLib/Skeleton.h"
 #include	"MeshLib/Static.h"
 #include	"MeshLib/CommonPrims.h"
 #include	"InputLib/Input.h"
@@ -28,6 +30,7 @@
 #define	MOVE_RATE		0.1f
 #define	MOUSE_TO_ANG	0.001f
 #define	POW_SLIDER_MAX	100
+#define	MAX_UI_VERTS	8192
 
 //this gets passed into events and such
 //will likely grow
@@ -46,6 +49,9 @@ typedef struct AppContext_t
 	bool	mbPosDiffTaken;
 	vec2	mPosDiff;
 
+	//D3D stuff
+	ID3D11RasterizerState	*mp3DRast;
+
 	//grogstuff
 	GraphicsDevice	*mpGD;
 	GameCamera		*mpCam;
@@ -53,6 +59,7 @@ typedef struct AppContext_t
 	CBKeeper		*mpCBK;
 	PostProcess		*mpPP;
 	Input			*mpInp;
+	UIStuff			*mpUI;		//clay ui
 
 	//loaded data
 	AnimLib		*mpALib;
@@ -72,8 +79,16 @@ typedef struct AppContext_t
 	bool	mbRunning, mbMouseLooking;
 	int		mAnimIndex, mMatIndex;
 	float	mAnimTime;
+	bool	mbLeftMouseDown;
 
-	//gui stuff
+	//clay pointer stuff
+	Clay_Vector2	mScrollDelta;
+	Clay_Vector2	mMousePos;
+
+	//projection matrices
+	mat4	mCamProj, mTextProj;
+
+	//nappgui stuff
 	ListBox		*mpMeshPartLB;
 	ListBox		*mpMaterialLB;
 	ListBox		*mpAnimLB;
@@ -96,6 +111,10 @@ typedef struct AppContext_t
 	//list of anims loaded
 	StringList	*mpAnimList;
 
+	//skeleton data
+	DictSZ		*mpSkelData;
+	StringList	*mpSkelRoots;
+
 }  AppContext;
 
 //function pointer types
@@ -103,7 +122,7 @@ typedef void	(*ReNameFunc)(void *, const char *, const char *);
 
 //static forward decs
 static void				SetupKeyBinds(Input *pInp);
-static void				SetupRastVP(GraphicsDevice *pGD);
+static void				SetupRastVP(AppContext *pApp);
 static const Image		*sMakeSmallVColourBox(vec3 colour);
 static const Image		*sMakeSmallColourBox(color_t colour);
 static int				sGetSelectedMeshPartIndex(AppContext *pApp);
@@ -115,9 +134,13 @@ static const Image		*sCreateTexImage(const UT_string *szTex);
 static bool				sSelectPopupItem(PopUp *pPop, const char *pSZ);
 static int 				sGetSelectedIndex(const ListBox *pLB);
 static void				sDeleteListBoxItem(ListBox *pLB, int idx);
+static void				sIterateSkeleton(const UT_string *szName, const UT_string *szParent, void *pContext);
 static void				sSetDefaultCel(AppContext *pApp);
 static uint32_t			sSpawnReName(AppContext *pApp, V2Df pos, const char *szOld,
 							ListBox *pLB, void *pItem, ReNameFunc reName);
+//clay stuff
+static const Clay_RenderCommandArray sCreateLayout(const AppContext *pApp);
+static void sHandleClayErrors(Clay_ErrorData errorData);
 
 //input event handlers
 static void	RandLightEH(void *pContext, const SDL_Event *pEvt);
@@ -136,6 +159,7 @@ static void	KeyTurnRightEH(void *pContext, const SDL_Event *pEvt);
 static void	KeyTurnUpEH(void *pContext, const SDL_Event *pEvt);
 static void	KeyTurnDownEH(void *pContext, const SDL_Event *pEvt);
 static void MouseMoveEH(void *pContext, const SDL_Event *pEvt);
+static void MouseWheelEH(void *pContext, const SDL_Event *pEvt);
 static void EscEH(void *pContext, const SDL_Event *pEvt);
 
 //button event handlers
@@ -186,6 +210,8 @@ static Window	*sCreateWindow(void)
 	Window	*pWnd	=window_create(ekWINDOW_STD | ekWINDOW_ESC | ekWINDOW_RETURN | ekWINDOW_RESIZE);
 	
 	window_title(pWnd, "Collada Conversion Tool");
+
+	printf("sCreateWindow\n");
 	
 	return	pWnd;
 }
@@ -396,6 +422,7 @@ static void	sCreateMatWindow(AppContext *pApp)
 
 static AppContext	*sAppCreate(void)
 {
+	printf("sAppCreate\n");
 	AppContext	*pApp	=heap_new0(AppContext);
 
 	pApp->mpUS	=UserSettings_Create();
@@ -540,7 +567,7 @@ static AppContext	*sAppCreate(void)
 	//turn on border
 	GD_SetWindowBordered(pApp->mpGD, true);
 
-	SetupRastVP(pApp->mpGD);
+	SetupRastVP(pApp);
 
 	pApp->mpSK	=StuffKeeper_Create(pApp->mpGD);
 	if(pApp->mpSK == NULL)
@@ -584,14 +611,13 @@ static AppContext	*sAppCreate(void)
 
 	//game camera
 	pApp->mpCam	=GameCam_Create(false, 0.1f, 2000.0f, GLM_PI_4f, aspect, 1.0f, 10.0f);
+	
 	//3D Projection
-	mat4	camProj;
-	GameCam_GetProjection(pApp->mpCam, camProj);
-	CBK_SetProjection(pApp->mpCBK, camProj);
+	GameCam_GetProjection(pApp->mpCam, pApp->mCamProj);
+	CBK_SetProjection(pApp->mpCBK, pApp->mCamProj);
 
 	//2d projection for text
-	mat4	textProj;
-	glm_ortho(0, RESX, RESY, 0, -1.0f, 1.0f, textProj);
+	glm_ortho(0, RESX, RESY, 0, -1.0f, 1.0f, pApp->mTextProj);
 
 	//set constant buffers to shaders, think I just have to do this once
 	CBK_SetCommonCBToShaders(pApp->mpCBK, pApp->mpGD);
@@ -602,6 +628,18 @@ static AppContext	*sAppCreate(void)
 
 	glm_vec3_normalize(pApp->mLightDir);
 
+	pApp->mpUI	=UI_Create(pApp->mpGD, pApp->mpSK, MAX_UI_VERTS);
+
+	UI_AddFont(pApp->mpUI, "MeiryoUI26", 0);
+
+	//clay init
+    uint64_t totalMemorySize = Clay_MinMemorySize();
+    Clay_Arena clayMemory = Clay_CreateArenaWithCapacityAndMemory(totalMemorySize, malloc(totalMemorySize));
+    Clay_Initialize(clayMemory, (Clay_Dimensions) { (float)RESX, (float)RESY }, (Clay_ErrorHandler) { sHandleClayErrors });
+    Clay_SetMeasureTextFunction(UI_MeasureText, (uintptr_t)pApp->mpUI);
+
+	Clay_SetDebugModeEnabled(true);
+
 	pApp->mbRunning	=true;
 
 	return	pApp;
@@ -609,6 +647,7 @@ static AppContext	*sAppCreate(void)
 
 static void	sAppDestroy(AppContext **ppApp)
 {
+	printf("sAppDestroy\n");
 	sSaveWindowPositions(*ppApp);
 
 	GD_Destroy(&((*ppApp)->mpGD));
@@ -644,13 +683,18 @@ static void sRender(AppContext *pApp, const real64_t prTime, const real64_t cTim
 		}
 	}
 
-	//set no blend, I think post processing turns it on maybe
-	GD_OMSetBlendState(pApp->mpGD, StuffKeeper_GetBlendState(pApp->mpSK, "NoBlending"));
-	GD_PSSetSampler(pApp->mpGD, StuffKeeper_GetSamplerState(pApp->mpSK, "PointWrap"), 0);
-
 	//camera update
 	GameCam_UpdateRotation(pApp->mpCam, pApp->mEyePos, pApp->mDeltaPitch,
 							pApp->mDeltaYaw, 0.0f);
+
+	//Set proj and rast and depth for 3D
+	CBK_SetProjection(pApp->mpCBK, pApp->mCamProj);
+	GD_RSSetState(pApp->mpGD, pApp->mp3DRast);
+	GD_OMSetDepthStencilState(pApp->mpGD, StuffKeeper_GetDepthStencilState(pApp->mpSK, "EnableDepth"));
+
+	//set no blend, I think post processing turns it on maybe
+	GD_OMSetBlendState(pApp->mpGD, StuffKeeper_GetBlendState(pApp->mpSK, "NoBlending"));
+	GD_PSSetSampler(pApp->mpGD, StuffKeeper_GetSamplerState(pApp->mpSK, "PointWrap"), 0);
 
 	//set CB view
 	{
@@ -659,7 +703,6 @@ static void sRender(AppContext *pApp, const real64_t prTime, const real64_t cTim
 
 		CBK_SetView(pApp->mpCBK, viewMat, pApp->mEyePos);
 	}
-
 
 	PP_SetTargets(pApp->mpPP, pApp->mpGD, "BackColor", "BackDepth");
 	PP_ClearDepth(pApp->mpPP, pApp->mpGD, "BackDepth");
@@ -697,6 +740,22 @@ static void sRender(AppContext *pApp, const real64_t prTime, const real64_t cTim
 		}
 	}
 
+	//set proj for 2D
+	CBK_SetProjection(pApp->mpCBK, pApp->mTextProj);
+	CBK_UpdateFrame(pApp->mpCBK, pApp->mpGD);
+
+	Clay_UpdateScrollContainers(true, pApp->mScrollDelta, cTime);
+
+	pApp->mScrollDelta.x	=pApp->mScrollDelta.y	=0.0f;
+
+    Clay_RenderCommandArray renderCommands = sCreateLayout(pApp);
+
+	UI_BeginDraw(pApp->mpUI);
+
+	UI_ClayRender(pApp->mpUI, renderCommands);
+
+	UI_EndDraw(pApp->mpUI);
+
 	GD_Present(pApp->mpGD);
 
 	//have to do this window position difference after
@@ -722,6 +781,7 @@ static void sAppUpdate(AppContext *pApp, const real64_t prTime, const real64_t c
 	if(pApp == NULL)
 	{
 		//init not finished
+		printf("Init not finished\n");
 		return;
 	}
 	
@@ -730,8 +790,7 @@ static void sAppUpdate(AppContext *pApp, const real64_t prTime, const real64_t c
 		osapp_finish();
 	}
 
-	pApp->mAnimTime		+=(cTime / 1000.0);
-
+	pApp->mAnimTime		=cTime;
 	pApp->mDeltaYaw		=0.0f;
 	pApp->mDeltaPitch	=0.0f;
 
@@ -769,7 +828,8 @@ static void	SetupKeyBinds(Input *pInp)
 	INP_MakeBinding(pInp, INP_BIND_TYPE_HELD, SDLK_t, KeyTurnDownEH);
 
 	//move data events
-	INP_MakeBinding(pInp, INP_BIND_TYPE_MOVE, SDL_EVENT_MOUSE_MOTION, MouseMoveEH);
+	INP_MakeBinding(pInp, INP_BIND_TYPE_MOVE, SDL_MOUSEMOTION, MouseMoveEH);
+	INP_MakeBinding(pInp, INP_BIND_TYPE_MOVE, SDL_MOUSEWHEEL, MouseWheelEH);
 
 	//down/up events
 	INP_MakeBinding(pInp, INP_BIND_TYPE_PRESS, SDL_BUTTON_RIGHT, RightMouseDownEH);
@@ -778,7 +838,7 @@ static void	SetupKeyBinds(Input *pInp)
 	INP_MakeBinding(pInp, INP_BIND_TYPE_RELEASE, SDL_BUTTON_LEFT, LeftMouseUpEH);
 }
 
-static void	SetupRastVP(GraphicsDevice *pGD)
+static void	SetupRastVP(AppContext *pApp)
 {
 	D3D11_RASTERIZER_DESC	rastDesc;
 	rastDesc.AntialiasedLineEnable	=false;
@@ -791,7 +851,8 @@ static void	SetupRastVP(GraphicsDevice *pGD)
 	rastDesc.DepthClipEnable		=true;
 	rastDesc.ScissorEnable			=false;
 	rastDesc.SlopeScaledDepthBias	=0;
-	ID3D11RasterizerState	*pRast	=GD_CreateRasterizerState(pGD, &rastDesc);
+
+	pApp->mp3DRast	=GD_CreateRasterizerState(pApp->mpGD, &rastDesc);
 
 	D3D11_VIEWPORT	vp;
 
@@ -802,9 +863,9 @@ static void	SetupRastVP(GraphicsDevice *pGD)
 	vp.TopLeftX	=0;
 	vp.TopLeftY	=0;
 
-	GD_RSSetViewPort(pGD, &vp);
-	GD_RSSetState(pGD, pRast);
-	GD_IASetPrimitiveTopology(pGD, D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	GD_RSSetViewPort(pApp->mpGD, &vp);
+	GD_RSSetState(pApp->mpGD, pApp->mp3DRast);
+	GD_IASetPrimitiveTopology(pApp->mpGD, D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 }
 
 //event handlers (eh)
@@ -825,6 +886,13 @@ static void	LeftMouseDownEH(void *pContext, const SDL_Event *pEvt)
 	AppContext	*pTS	=(AppContext *)pContext;
 
 	assert(pTS);
+
+	pTS->mbLeftMouseDown	=true;
+
+	if(!pTS->mbMouseLooking)
+	{
+		Clay_SetPointerState(pTS->mMousePos, true);
+	}
 }
 
 static void	LeftMouseUpEH(void *pContext, const SDL_Event *pEvt)
@@ -832,6 +900,13 @@ static void	LeftMouseUpEH(void *pContext, const SDL_Event *pEvt)
 	AppContext	*pTS	=(AppContext *)pContext;
 
 	assert(pTS);
+
+	pTS->mbLeftMouseDown	=false;
+
+	if(!pTS->mbMouseLooking)
+	{
+		Clay_SetPointerState(pTS->mMousePos, false);
+	}
 }
 
 static void	RightMouseDownEH(void *pContext, const SDL_Event *pEvt)
@@ -867,6 +942,23 @@ static void	MouseMoveEH(void *pContext, const SDL_Event *pEvt)
 		pTS->mDeltaYaw		+=(pEvt->motion.xrel * MOUSE_TO_ANG);
 		pTS->mDeltaPitch	+=(pEvt->motion.yrel * MOUSE_TO_ANG);
 	}
+	else
+	{
+		pTS->mMousePos.x	=pEvt->motion.x;
+		pTS->mMousePos.y	=pEvt->motion.y;
+
+		Clay_SetPointerState(pTS->mMousePos, pTS->mbLeftMouseDown);
+	}
+}
+
+static void	MouseWheelEH(void *pContext, const SDL_Event *pEvt)
+{
+	AppContext	*pTS	=(AppContext *)pContext;
+
+	assert(pTS);
+
+	pTS->mScrollDelta.x	=pEvt->wheel.x;
+	pTS->mScrollDelta.y	=pEvt->wheel.y;
 }
 
 static void	KeyMoveForwardEH(void *pContext, const SDL_Event *pEvt)
@@ -1302,6 +1394,16 @@ static void sLoadAnimLib(AppContext *pAC, Event *pEvt)
 		listbox_add_elem(pAC->mpAnimLB, SZList_IteratorVal(pCur), NULL);
 
 		pCur	=SZList_IteratorNext(pCur);
+	}
+
+	if(pAC->mpALib != NULL)
+	{
+		const Skeleton	*pSkel	=AnimLib_GetSkeleton(pAC->mpALib);
+		if(pSkel != NULL)
+		{
+			pAC->mpSkelRoots	=Skeleton_GetRootNames(pSkel);
+			Skeleton_Iterate(pSkel, sIterateSkeleton, &pAC->mpSkelData);
+		}
 	}
 }
 
@@ -2059,6 +2161,11 @@ static Material	*sGetSelectedMaterial(AppContext *pApp)
 {
 	const char	*szMatSel	=sGetSelectedMaterialName(pApp);
 
+	if(szMatSel == NULL)
+	{
+		return	NULL;
+	}
+
 	return	MatLib_GetMaterial(pApp->mpMatLib, szMatSel);
 }
 
@@ -2104,4 +2211,145 @@ static void	sSetDefaultCel(AppContext *pApp)
 	CBK_SetCelSteps(pApp->mpCBK, mins, maxs, snap, 4);
 
 	CBK_UpdateCel(pApp->mpCBK, pApp->mpGD);
+}
+
+//skeleton iterator
+static void	sIterateSkeleton(const UT_string *szName, const UT_string *szParent, void *pContext)
+{
+	if(pContext == NULL)
+	{
+		printf("Null context in sIterateSkeleton!\n");
+		return;
+	}
+
+	DictSZ	**ppDict	=(DictSZ **)pContext;
+
+//	printf("sIterateSkel: %s->%s\n", utstring_body(szParent), utstring_body(szName));
+
+	if(DictSZ_ContainsKey(*ppDict, szParent))
+	{
+		StringList	*pList	=DictSZ_GetValue(*ppDict, szParent);
+
+		SZList_AddUT(&pList, szName);
+	}
+	else
+	{
+		StringList	*pList	=SZList_New();
+
+		SZList_AddUT(&pList, szName);
+
+		DictSZ_Add(ppDict, szParent, pList);
+	}
+}
+
+static void OnHoverBone(Clay_ElementId eID, Clay_PointerData pnt, intptr_t userData)
+{
+	//clicked?
+	if(pnt.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME)
+	{
+		printf("Click! %s\n", eID.stringId.chars);
+	}
+}
+
+
+static void sIterateSkelData(DictSZ * const*ppDSZ, const UT_string *pNode)
+{
+	StringList	*pNodes;
+
+	if(pNode == NULL)
+	{
+		return;
+	}
+
+	if(!DictSZ_ContainsKey(*ppDSZ, pNode))
+	{
+		return;
+	}
+	Clay__OpenElement();
+
+	Clay_String	csNode;
+
+	csNode.chars	=utstring_body(pNode);
+	csNode.length	=utstring_len(pNode);
+
+//	printf("OpenElement: %s", csNode.chars);
+
+	Clay__AttachId(Clay__HashString(csNode, 0, 0));
+
+	CLAY_LAYOUT({ .childGap = 4, .padding = { 16, 0, 0, 0},
+					.layoutDirection = CLAY_TOP_TO_BOTTOM,
+					.sizing = { .width = CLAY_SIZING_FIT(0),
+						.height = CLAY_SIZING_FIT(0) }});
+	CLAY_RECTANGLE({ .color = {10, 221, 25, 45} });
+	Clay_OnHover(OnHoverBone, 0);
+	CLAY_TEXT(csNode, CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {10, 0, 0, 255} }));
+
+	Clay__ElementPostConfiguration();
+
+	pNodes	=DictSZ_GetValue(*ppDSZ, pNode);
+
+	const StringList	*pCur	=SZList_Iterate(pNodes);
+	while(pCur != NULL)
+	{
+//		printf("pCur: %s\n", utstring_body(SZList_IteratorValUT(pCur)));
+
+		sIterateSkelData(ppDSZ, SZList_IteratorValUT(pCur));
+
+		pCur	=SZList_IteratorNext(pCur);
+	}
+
+//	printf("CloseElement: %s\n", csNode.chars);
+
+	Clay__CloseElement();
+}
+
+
+//for in render window UI
+static Clay_RenderCommandArray sCreateLayout(const AppContext *pApp)
+{
+	Clay_BeginLayout();
+
+	Clay__OpenElement();
+
+	CLAY_ID("SideBar");
+
+	CLAY_LAYOUT({ .childAlignment = { .x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP},
+					.layoutDirection = CLAY_TOP_TO_BOTTOM,
+					.sizing = { .width = CLAY_SIZING_FIXED(300),
+					.height = CLAY_SIZING_GROW(0) },
+					.padding = {16, 16, 16, 16 },
+					.childGap = 16 });
+	CLAY_RECTANGLE({ .color = {150, 150, 155, 55} });
+	CLAY_SCROLL({ .horizontal = true, .vertical = true });
+
+	Clay__ElementPostConfiguration();
+
+	if(pApp->mpSkelData != NULL)
+	{
+		const StringList	*pCur	=SZList_Iterate(pApp->mpSkelRoots);
+		while(pCur != NULL)
+		{
+			sIterateSkelData(&pApp->mpSkelData, SZList_IteratorValUT(pCur));
+			pCur	=SZList_IteratorNext(pCur);
+		}
+	}
+
+	Clay__CloseElement();
+
+//	printf("Done\n");
+
+	return Clay_EndLayout();
+}
+
+static bool reinitializeClay = false;
+
+static void sHandleClayErrors(Clay_ErrorData errorData) {
+    printf("%s", errorData.errorText.chars);
+    if (errorData.errorType == CLAY_ERROR_TYPE_ELEMENTS_CAPACITY_EXCEEDED) {
+        reinitializeClay = true;
+        Clay_SetMaxElementCount(Clay_GetMaxElementCount() * 2);
+    } else if (errorData.errorType == CLAY_ERROR_TYPE_TEXT_MEASUREMENT_CAPACITY_EXCEEDED) {
+        reinitializeClay = true;
+        Clay_SetMaxMeasureTextCacheWordCount(Clay_GetMaxMeasureTextCacheWordCount() * 2);
+    }
 }
