@@ -17,6 +17,7 @@
 #include	"MeshLib/Mesh.h"
 #include	"MeshLib/Character.h"
 #include	"MeshLib/Skeleton.h"
+#include	"MeshLib/GSNode.h"
 #include	"MeshLib/Static.h"
 #include	"MeshLib/CommonPrims.h"
 #include	"InputLib/Input.h"
@@ -30,7 +31,23 @@
 #define	MOVE_RATE		0.1f
 #define	MOUSE_TO_ANG	0.001f
 #define	POW_SLIDER_MAX	100
-#define	MAX_UI_VERTS	8192
+#define	MAX_UI_VERTS	8192 * 2
+
+//clay colours
+#define COLOR_ORANGE (Clay_Color) {225, 138, 50, 255}
+#define COLOR_BLUE (Clay_Color) {111, 173, 162, 255}
+#define COLOR_GOLD (Clay_Color) {255, 222, 162, 255}
+
+//little hashy struct for tracking bone display data
+typedef struct	BoneDisplayData_t
+{
+	const GSNode	*mpNode;
+
+	bool	mbSelected;
+	bool	mbInfluencing;	//some part of the mesh uses this bone
+
+	UT_hash_handle	hh;
+}	BoneDisplayData;
 
 //this gets passed into events and such
 //will likely grow
@@ -85,6 +102,9 @@ typedef struct AppContext_t
 	Clay_Vector2	mScrollDelta;
 	Clay_Vector2	mMousePos;
 
+	//skelly editor data
+	BoneDisplayData	*mpBDD;
+
 	//projection matrices
 	mat4	mCamProj, mTextProj;
 
@@ -111,10 +131,6 @@ typedef struct AppContext_t
 	//list of anims loaded
 	StringList	*mpAnimList;
 
-	//skeleton data
-	DictSZ		*mpSkelData;
-	StringList	*mpSkelRoots;
-
 }  AppContext;
 
 //function pointer types
@@ -134,12 +150,11 @@ static const Image		*sCreateTexImage(const UT_string *szTex);
 static bool				sSelectPopupItem(PopUp *pPop, const char *pSZ);
 static int 				sGetSelectedIndex(const ListBox *pLB);
 static void				sDeleteListBoxItem(ListBox *pLB, int idx);
-static void				sIterateSkeleton(const UT_string *szName, const UT_string *szParent, void *pContext);
 static void				sSetDefaultCel(AppContext *pApp);
 static uint32_t			sSpawnReName(AppContext *pApp, V2Df pos, const char *szOld,
 							ListBox *pLB, void *pItem, ReNameFunc reName);
 //clay stuff
-static const Clay_RenderCommandArray sCreateLayout(const AppContext *pApp);
+static const Clay_RenderCommandArray sCreateLayout(AppContext *pApp);
 static void sHandleClayErrors(Clay_ErrorData errorData);
 
 //input event handlers
@@ -647,12 +662,22 @@ static AppContext	*sAppCreate(void)
 
 static void	sAppDestroy(AppContext **ppApp)
 {
+	AppContext	*pAC	=*ppApp;
+
 	printf("sAppDestroy\n");
-	sSaveWindowPositions(*ppApp);
+	sSaveWindowPositions(pAC);
 
-	GD_Destroy(&((*ppApp)->mpGD));
+	GD_Destroy(&pAC->mpGD);
 
-	window_destroy(&(*ppApp)->mpWnd);
+	window_destroy(&pAC->mpWnd);
+
+	//nuke bone display data
+	BoneDisplayData	*pCur, *pTmp;
+	HASH_ITER(hh, pAC->mpBDD, pCur, pTmp)
+	{
+		HASH_DEL(pAC->mpBDD, pCur);
+		free(pCur);
+	}
 
 	heap_delete(ppApp, AppContext);
 }
@@ -1394,16 +1419,6 @@ static void sLoadAnimLib(AppContext *pAC, Event *pEvt)
 		listbox_add_elem(pAC->mpAnimLB, SZList_IteratorVal(pCur), NULL);
 
 		pCur	=SZList_IteratorNext(pCur);
-	}
-
-	if(pAC->mpALib != NULL)
-	{
-		const Skeleton	*pSkel	=AnimLib_GetSkeleton(pAC->mpALib);
-		if(pSkel != NULL)
-		{
-			pAC->mpSkelRoots	=Skeleton_GetRootNames(pSkel);
-			Skeleton_Iterate(pSkel, sIterateSkeleton, &pAC->mpSkelData);
-		}
 	}
 }
 
@@ -2213,99 +2228,125 @@ static void	sSetDefaultCel(AppContext *pApp)
 	CBK_UpdateCel(pApp->mpCBK, pApp->mpGD);
 }
 
-//skeleton iterator
-static void	sIterateSkeleton(const UT_string *szName, const UT_string *szParent, void *pContext)
-{
-	if(pContext == NULL)
-	{
-		printf("Null context in sIterateSkeleton!\n");
-		return;
-	}
 
-	DictSZ	**ppDict	=(DictSZ **)pContext;
-
-//	printf("sIterateSkel: %s->%s\n", utstring_body(szParent), utstring_body(szName));
-
-	if(DictSZ_ContainsKey(*ppDict, szParent))
-	{
-		StringList	*pList	=DictSZ_GetValue(*ppDict, szParent);
-
-		SZList_AddUT(&pList, szName);
-	}
-	else
-	{
-		StringList	*pList	=SZList_New();
-
-		SZList_AddUT(&pList, szName);
-
-		DictSZ_Add(ppDict, szParent, pList);
-	}
-}
-
-static void OnHoverBone(Clay_ElementId eID, Clay_PointerData pnt, intptr_t userData)
+static void sOnHoverBone(Clay_ElementId eID, Clay_PointerData pnt, intptr_t userData)
 {
 	//clicked?
 	if(pnt.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME)
 	{
 		printf("Click! %s\n", eID.stringId.chars);
+
+		AppContext	*pApp	=(AppContext *)userData;
+		if(pApp == NULL)
+		{
+			return;
+		}
+		if(pApp->mpALib == NULL)
+		{
+			return;
+		}
+
+		const Skeleton	*pSkel	=AnimLib_GetSkeleton(pApp->mpALib);
+		if(pSkel == NULL)
+		{
+			return;
+		}
+
+		const GSNode	*pBone	=Skeleton_GetConstBoneByName(pSkel, eID.stringId.chars);
+		if(pBone == NULL)
+		{
+			return;
+		}
+
+		BoneDisplayData	*pBDD;
+
+		//see if bone data already exists
+		HASH_FIND_PTR(pApp->mpBDD, &pBone, pBDD);
+		if(pBDD == NULL)
+		{
+			pBDD	=malloc(sizeof(BoneDisplayData));
+			memset(pBDD, 0, sizeof(BoneDisplayData));
+
+			pBDD->mpNode	=pBone;
+
+			HASH_ADD_PTR(pApp->mpBDD, mpNode, pBDD);
+		}
+
+		//toggle selected
+		pBDD->mbSelected	=!pBDD->mbSelected;
 	}
 }
 
-
-static void sIterateSkelData(DictSZ * const*ppDSZ, const UT_string *pNode)
+static bool	sIsSelected(const BoneDisplayData *pBDD, const GSNode *pNode)
 {
-	StringList	*pNodes;
+	BoneDisplayData	*pFound;
 
+	HASH_FIND_PTR(pBDD, &pNode, pFound);
+	if(pFound == NULL)
+	{
+		return	false;
+	}
+	return	pFound->mbSelected;
+}
+
+//dive thru the bone tree to make clay stuffs
+static void sSkeletonLayout(const GSNode *pNode, AppContext *pAC)
+{
 	if(pNode == NULL)
 	{
 		return;
 	}
 
-	if(!DictSZ_ContainsKey(*ppDSZ, pNode))
-	{
-		return;
-	}
-	Clay__OpenElement();
-
 	Clay_String	csNode;
 
-	csNode.chars	=utstring_body(pNode);
-	csNode.length	=utstring_len(pNode);
+	csNode.chars	=utstring_body(pNode->szName);
+	csNode.length	=utstring_len(pNode->szName);
 
-//	printf("OpenElement: %s", csNode.chars);
-
-	Clay__AttachId(Clay__HashString(csNode, 0, 0));
-
+	//create a big encompassing box that contains
+	//all child nodes too, will this work with no ID?
+	Clay__OpenElement();
 	CLAY_LAYOUT({ .childGap = 4, .padding = { 16, 0, 0, 0},
 					.layoutDirection = CLAY_TOP_TO_BOTTOM,
 					.sizing = { .width = CLAY_SIZING_FIT(0),
-						.height = CLAY_SIZING_FIT(0) }});
-	CLAY_RECTANGLE({ .color = {10, 221, 25, 45} });
-	Clay_OnHover(OnHoverBone, 0);
-	CLAY_TEXT(csNode, CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {10, 0, 0, 255} }));
+						.height = CLAY_SIZING_FIT(0) }}),
+		CLAY_RECTANGLE({ .color = {10, 221, 25, 45} });
+	Clay__ElementPostConfiguration();
+
+	//see if selected
+	bool	bSelected	=sIsSelected(pAC->mpBDD, pNode);
+
+	//create an inner rect sized for the text
+	Clay__OpenElement();
+	Clay__AttachId(Clay__HashString(csNode, 0, 0));
+	CLAY_LAYOUT({ .childGap = 4, .padding = { 8, 8, 2, 2 },
+			.sizing = { .width = CLAY_SIZING_FIT(0), .height = CLAY_SIZING_FIT(0) }}),
+		Clay_OnHover(sOnHoverBone, (intptr_t)pAC),		
+		CLAY_RECTANGLE({ .cornerRadius = {6},
+			//selected, hovered, or normal?
+			.color = bSelected? COLOR_GOLD : (Clay_Hovered()? COLOR_ORANGE : COLOR_BLUE) }),
+		CLAY_TEXT(csNode, CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {10, 0, 0, 255} })),
 
 	Clay__ElementPostConfiguration();
 
-	pNodes	=DictSZ_GetValue(*ppDSZ, pNode);
+//	printf("CloseElement: %s\n", csNode.chars);
 
-	const StringList	*pCur	=SZList_Iterate(pNodes);
-	while(pCur != NULL)
+	//this closes the inner text nubbins
+	Clay__CloseElement();
+
+	//children should parent off the big rect
+	for(int i=0;i < pNode->mNumChildren;i++)
 	{
 //		printf("pCur: %s\n", utstring_body(SZList_IteratorValUT(pCur)));
 
-		sIterateSkelData(ppDSZ, SZList_IteratorValUT(pCur));
-
-		pCur	=SZList_IteratorNext(pCur);
+		sSkeletonLayout(pNode->mpChildren[i], pAC);
 	}
-
-//	printf("CloseElement: %s\n", csNode.chars);
 
 	Clay__CloseElement();
 }
 
 
 //for in render window UI
-static Clay_RenderCommandArray sCreateLayout(const AppContext *pApp)
+static Clay_RenderCommandArray sCreateLayout(AppContext *pApp)
 {
 	Clay_BeginLayout();
 
@@ -2324,13 +2365,15 @@ static Clay_RenderCommandArray sCreateLayout(const AppContext *pApp)
 
 	Clay__ElementPostConfiguration();
 
-	if(pApp->mpSkelData != NULL)
+	if(pApp->mpALib != NULL)
 	{
-		const StringList	*pCur	=SZList_Iterate(pApp->mpSkelRoots);
-		while(pCur != NULL)
+		const Skeleton	*pSkel	=AnimLib_GetSkeleton(pApp->mpALib);
+		if(pSkel != NULL)
 		{
-			sIterateSkelData(&pApp->mpSkelData, SZList_IteratorValUT(pCur));
-			pCur	=SZList_IteratorNext(pCur);
+			for(int i=0;i < pSkel->mNumRoots;i++)
+			{
+				sSkeletonLayout(pSkel->mpRoots[i], pApp);
+			}
 		}
 	}
 
