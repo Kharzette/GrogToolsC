@@ -45,6 +45,7 @@ typedef struct	BoneDisplayData_t
 
 	bool	mbSelected;
 	bool	mbInfluencing;	//some part of the mesh uses this bone
+	bool	mbCollapsed;	//draw this node collapsed
 
 	UT_hash_handle	hh;
 }	BoneDisplayData;
@@ -176,6 +177,9 @@ static void	KeyTurnDownEH(void *pContext, const SDL_Event *pEvt);
 static void MouseMoveEH(void *pContext, const SDL_Event *pEvt);
 static void MouseWheelEH(void *pContext, const SDL_Event *pEvt);
 static void EscEH(void *pContext, const SDL_Event *pEvt);
+static void CollapseBonesEH(void *pContext, const SDL_Event *pEvt);
+static void MarkUnusedBonesEH(void *pContext, const SDL_Event *pEvt);
+static void DeleteBonesEH(void *pContext, const SDL_Event *pEvt);
 
 //button event handlers
 static void sLoadCharacter(AppContext *pAC, Event *pEvt);
@@ -834,7 +838,10 @@ osmain_sync(TIC_RATE, sAppCreate, sAppDestroy, sAppUpdate, "", AppContext)
 static void	SetupKeyBinds(Input *pInp)
 {
 	//event style bindings
-	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_l, RandLightEH);
+	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_l, RandLightEH);		//randomize light dir
+	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_c, CollapseBonesEH);	//collapse/uncollapse selected bones
+	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_m, MarkUnusedBonesEH);	//mark bones that aren't used in vert weights
+	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_DELETE, DeleteBonesEH);	//nuke selected bones
 	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_ESCAPE, EscEH);
 
 	//held bindings
@@ -843,7 +850,7 @@ static void	SetupKeyBinds(Input *pInp)
 	INP_MakeBinding(pInp, INP_BIND_TYPE_HELD, SDLK_a, KeyMoveLeftEH);
 	INP_MakeBinding(pInp, INP_BIND_TYPE_HELD, SDLK_s, KeyMoveBackEH);
 	INP_MakeBinding(pInp, INP_BIND_TYPE_HELD, SDLK_d, KeyMoveRightEH);
-	INP_MakeBinding(pInp, INP_BIND_TYPE_HELD, SDLK_c, KeyMoveUpEH);
+	INP_MakeBinding(pInp, INP_BIND_TYPE_HELD, SDLK_SPACE, KeyMoveUpEH);
 	INP_MakeBinding(pInp, INP_BIND_TYPE_HELD, SDLK_z, KeyMoveDownEH);
 
 	//key turning
@@ -1107,6 +1114,39 @@ static void	EscEH(void *pContext, const SDL_Event *pEvt)
 	assert(pTS);
 
 	pTS->mbRunning	=false;
+}
+
+static void CollapseBonesEH(void *pContext, const SDL_Event *pEvt)
+{
+	AppContext	*pTS	=(AppContext *)pContext;
+
+	assert(pTS);
+
+	BoneDisplayData	*pBDD;
+
+	//toggle collapse on selected and deselect
+	for(pBDD=pTS->mpBDD;pBDD != NULL;pBDD=pBDD->hh.next)
+	{
+		if(pBDD->mbSelected)
+		{
+			pBDD->mbSelected	=false;
+			pBDD->mbCollapsed	=!pBDD->mbCollapsed;
+		}
+	}
+}
+
+static void MarkUnusedBonesEH(void *pContext, const SDL_Event *pEvt)
+{
+	AppContext	*pTS	=(AppContext *)pContext;
+
+	assert(pTS);
+}
+
+static void DeleteBonesEH(void *pContext, const SDL_Event *pEvt)
+{
+	AppContext	*pTS	=(AppContext *)pContext;
+
+	assert(pTS);
 }
 
 
@@ -2289,6 +2329,18 @@ static bool	sIsSelected(const BoneDisplayData *pBDD, const GSNode *pNode)
 	return	pFound->mbSelected;
 }
 
+static bool	sIsCollapsed(const BoneDisplayData *pBDD, const GSNode *pNode)
+{
+	BoneDisplayData	*pFound;
+
+	HASH_FIND_PTR(pBDD, &pNode, pFound);
+	if(pFound == NULL)
+	{
+		return	false;
+	}
+	return	pFound->mbCollapsed;
+}
+
 //dive thru the bone tree to make clay stuffs
 static void sSkeletonLayout(const GSNode *pNode, AppContext *pAC)
 {
@@ -2315,6 +2367,12 @@ static void sSkeletonLayout(const GSNode *pNode, AppContext *pAC)
 	//see if selected
 	bool	bSelected	=sIsSelected(pAC->mpBDD, pNode);
 
+	//see if collapsed, if so recurse no further and add a +
+	bool	bCollapsed	=sIsCollapsed(pAC->mpBDD, pNode);
+
+	//see if bone has any children
+	bool	bHasKids	=(pNode->mNumChildren > 0);
+
 	//create an inner rect sized for the text
 	Clay__OpenElement();
 	Clay__AttachId(Clay__HashString(csNode, 0, 0));
@@ -2323,8 +2381,20 @@ static void sSkeletonLayout(const GSNode *pNode, AppContext *pAC)
 		Clay_OnHover(sOnHoverBone, (intptr_t)pAC),		
 		CLAY_RECTANGLE({ .cornerRadius = {6},
 			//selected, hovered, or normal?
-			.color = bSelected? COLOR_GOLD : (Clay_Hovered()? COLOR_ORANGE : COLOR_BLUE) }),
-		CLAY_TEXT(csNode, CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {10, 0, 0, 255} })),
+			.color = bSelected? COLOR_GOLD : (Clay_Hovered()? COLOR_ORANGE : COLOR_BLUE) });
+	
+	if(bHasKids)
+	{
+		if(bCollapsed)
+		{
+			CLAY_TEXT(CLAY_STRING("+"), CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 0, 0, 255} }));
+		}
+		else
+		{
+			CLAY_TEXT(CLAY_STRING("-"), CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 0, 0, 255} }));
+		}
+	}
+	CLAY_TEXT(csNode, CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 0, 0, 255} })),
 
 	Clay__ElementPostConfiguration();
 
@@ -2333,14 +2403,19 @@ static void sSkeletonLayout(const GSNode *pNode, AppContext *pAC)
 	//this closes the inner text nubbins
 	Clay__CloseElement();
 
-	//children should parent off the big rect
-	for(int i=0;i < pNode->mNumChildren;i++)
+	//see if collapsed, if so recurse no further
+	if(!sIsCollapsed(pAC->mpBDD, pNode))
 	{
-//		printf("pCur: %s\n", utstring_body(SZList_IteratorValUT(pCur)));
+		//children should parent off the big rect
+		for(int i=0;i < pNode->mNumChildren;i++)
+		{
+//			printf("pCur: %s\n", utstring_body(SZList_IteratorValUT(pCur)));
 
-		sSkeletonLayout(pNode->mpChildren[i], pAC);
+			sSkeletonLayout(pNode->mpChildren[i], pAC);
+		}
 	}
 
+	//close big outer rect
 	Clay__CloseElement();
 }
 
