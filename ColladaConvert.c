@@ -7,6 +7,7 @@
 #include	"UtilityLib/StringStuff.h"
 #include	"UtilityLib/DictionaryStuff.h"
 #include	"UtilityLib/UserSettings.h"
+#include	"UtilityLib/Mover.h"
 #include	"MaterialLib/StuffKeeper.h"
 #include	"MaterialLib/Material.h"
 #include	"MaterialLib/MaterialLib.h"
@@ -25,18 +26,20 @@
 
 #define	RESX			1280
 #define	RESY			720
-#define	TIC_RATE		1.0f / 60.0f
+#define	TIC_RATE		(1.0f / 60.0f)
 #define	ROT_RATE		10.0f
 #define	KEYTURN_RATE	0.01f
 #define	MOVE_RATE		0.1f
 #define	MOUSE_TO_ANG	0.001f
 #define	POW_SLIDER_MAX	100
-#define	MAX_UI_VERTS	8192 * 2
+#define	MAX_UI_VERTS	(8192 * 2)
 
-//clay colours
-#define COLOR_ORANGE (Clay_Color) {225, 138, 50, 255}
-#define COLOR_BLUE (Clay_Color) {111, 173, 162, 255}
-#define COLOR_GOLD (Clay_Color) {255, 222, 162, 255}
+//clay defines
+#define COLOR_ORANGE		(Clay_Color) {225, 138, 50, 255}
+#define COLOR_BLUE			(Clay_Color) {111, 173, 162, 255}
+#define COLOR_GOLD			(Clay_Color) {255, 222, 162, 255}
+#define	BONE_VERT_SIZE		30
+#define	COLLAPSE_INTERVAL	(0.5f)
 
 //little hashy struct for tracking bone display data
 typedef struct	BoneDisplayData_t
@@ -46,6 +49,7 @@ typedef struct	BoneDisplayData_t
 	bool	mbSelected;
 	bool	mbInfluencing;	//some part of the mesh uses this bone
 	bool	mbCollapsed;	//draw this node collapsed
+	bool	mbAnimating;	//mid opening or closing
 
 	UT_hash_handle	hh;
 }	BoneDisplayData;
@@ -105,6 +109,12 @@ typedef struct AppContext_t
 
 	//skelly editor data
 	BoneDisplayData	*mpBDD;
+	bool			mbSEVisible;	//user wants to see skelly editor
+	bool			mbSEAnimating;	//stuff collapsing / growing
+
+	//skelly popout movers
+	Mover	*mpSEM;
+	Mover	*mpBoneCollapse;
 
 	//projection matrices
 	mat4	mCamProj, mTextProj;
@@ -157,6 +167,7 @@ static uint32_t			sSpawnReName(AppContext *pApp, V2Df pos, const char *szOld,
 //clay stuff
 static const Clay_RenderCommandArray sCreateLayout(AppContext *pApp);
 static void sHandleClayErrors(Clay_ErrorData errorData);
+static void sSetNodesAnimatingOff(BoneDisplayData *pBDD);
 
 //input event handlers
 static void	RandLightEH(void *pContext, const SDL_Event *pEvt);
@@ -180,6 +191,7 @@ static void EscEH(void *pContext, const SDL_Event *pEvt);
 static void CollapseBonesEH(void *pContext, const SDL_Event *pEvt);
 static void MarkUnusedBonesEH(void *pContext, const SDL_Event *pEvt);
 static void DeleteBonesEH(void *pContext, const SDL_Event *pEvt);
+static void	SkelPopOutEH(void *pContext, const SDL_Event *pEvt);
 
 //button event handlers
 static void sLoadCharacter(AppContext *pAC, Event *pEvt);
@@ -565,6 +577,10 @@ static AppContext	*sAppCreate(void)
 	pApp->mpChar	=NULL;
 	pApp->mpStatic	=NULL;
 
+	//movers
+	pApp->mpSEM				=Mover_Create();
+	pApp->mpBoneCollapse	=Mover_Create();
+
 	//input and key / mouse bindings
 	pApp->mpInp	=INP_CreateInput();
 	SetupKeyBinds(pApp->mpInp);
@@ -819,6 +835,15 @@ static void sAppUpdate(AppContext *pApp, const real64_t prTime, const real64_t c
 		osapp_finish();
 	}
 
+	Mover_Update(pApp->mpSEM, TIC_RATE);
+	Mover_Update(pApp->mpBoneCollapse, TIC_RATE);
+
+	if(Mover_IsDone(pApp->mpBoneCollapse))
+	{
+		pApp->mbSEAnimating	=false;
+		sSetNodesAnimatingOff(pApp->mpBDD);
+	}
+
 	pApp->mAnimTime		=cTime;
 	pApp->mDeltaYaw		=0.0f;
 	pApp->mDeltaPitch	=0.0f;
@@ -842,6 +867,7 @@ static void	SetupKeyBinds(Input *pInp)
 	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_c, CollapseBonesEH);	//collapse/uncollapse selected bones
 	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_m, MarkUnusedBonesEH);	//mark bones that aren't used in vert weights
 	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_DELETE, DeleteBonesEH);	//nuke selected bones
+	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_p, SkelPopOutEH);	//nuke selected bones
 	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_ESCAPE, EscEH);
 
 	//held bindings
@@ -1122,6 +1148,11 @@ static void CollapseBonesEH(void *pContext, const SDL_Event *pEvt)
 
 	assert(pTS);
 
+	if(pTS->mbSEAnimating)
+	{
+		return;
+	}
+
 	BoneDisplayData	*pBDD;
 
 	//toggle collapse on selected and deselect
@@ -1131,8 +1162,15 @@ static void CollapseBonesEH(void *pContext, const SDL_Event *pEvt)
 		{
 			pBDD->mbSelected	=false;
 			pBDD->mbCollapsed	=!pBDD->mbCollapsed;
+			pBDD->mbAnimating	=true;
 		}
 	}
+
+	Mover_SetUpMove(pTS->mpBoneCollapse,
+		(vec4){BONE_VERT_SIZE,0,0,0}, (vec4){0,0,0,0},
+		COLLAPSE_INTERVAL, 0.2f, 0.2f);
+
+	pTS->mbSEAnimating	=true;
 }
 
 static void MarkUnusedBonesEH(void *pContext, const SDL_Event *pEvt)
@@ -1147,6 +1185,44 @@ static void DeleteBonesEH(void *pContext, const SDL_Event *pEvt)
 	AppContext	*pTS	=(AppContext *)pContext;
 
 	assert(pTS);
+}
+
+static void SkelPopOutEH(void *pContext, const SDL_Event *pEvt)
+{
+	AppContext	*pTS	=(AppContext *)pContext;
+
+	assert(pTS);
+
+	vec4	startPos	={0};
+	vec4	endPos		={0};
+
+	endPos[0]	=300;
+
+	vec4	mvPos;
+	Mover_GetPos(pTS->mpSEM, mvPos);
+
+	if(mvPos[0] > 0.0f)
+	{
+		if(pTS->mbSEVisible)
+		{
+			//closing from partway open
+			Mover_SetUpMove(pTS->mpSEM, mvPos, startPos, 0.25f, 0.2f, 0.2f);
+		}
+		else
+		{
+			//opening from partway closed
+			Mover_SetUpMove(pTS->mpSEM, mvPos, endPos, 0.25f, 0.2f, 0.2f);
+		}
+	}
+	else
+	{
+		if(!pTS->mbSEVisible)
+		{
+			Mover_SetUpMove(pTS->mpSEM, startPos, endPos, 0.5f, 0.2f, 0.2f);
+		}
+	}
+
+	pTS->mbSEVisible	=!pTS->mbSEVisible;
 }
 
 
@@ -2317,6 +2393,17 @@ static void sOnHoverBone(Clay_ElementId eID, Clay_PointerData pnt, intptr_t user
 	}
 }
 
+static void sSetNodesAnimatingOff(BoneDisplayData *pBDD)
+{
+	BoneDisplayData	*pCur;
+
+	//toggle collapse on selected and deselect
+	for(pCur=pBDD;pCur != NULL;pCur=pCur->hh.next)
+	{
+		pCur->mbAnimating	=false;
+	}
+}
+
 static bool	sIsSelected(const BoneDisplayData *pBDD, const GSNode *pNode)
 {
 	BoneDisplayData	*pFound;
@@ -2341,8 +2428,24 @@ static bool	sIsCollapsed(const BoneDisplayData *pBDD, const GSNode *pNode)
 	return	pFound->mbCollapsed;
 }
 
+static bool	sIsAnimating(const BoneDisplayData *pBDD, const GSNode *pNode)
+{
+	BoneDisplayData	*pFound;
+
+	HASH_FIND_PTR(pBDD, &pNode, pFound);
+	if(pFound == NULL)
+	{
+		return	false;
+	}
+	return	pFound->mbAnimating;
+}
+
+#define	NOT_COLLAPSING	0
+#define	GROWING			1
+#define	COLLAPSING		2
+
 //dive thru the bone tree to make clay stuffs
-static void sSkeletonLayout(const GSNode *pNode, AppContext *pAC)
+static void sSkeletonLayout(const GSNode *pNode, AppContext *pAC, int colState)
 {
 	if(pNode == NULL)
 	{
@@ -2370,28 +2473,59 @@ static void sSkeletonLayout(const GSNode *pNode, AppContext *pAC)
 	//see if collapsed, if so recurse no further and add a +
 	bool	bCollapsed	=sIsCollapsed(pAC->mpBDD, pNode);
 
+	//see if animating (opening or closing)
+	bool	bAnimating	=sIsAnimating(pAC->mpBDD, pNode);
+
 	//see if bone has any children
 	bool	bHasKids	=(pNode->mNumChildren > 0);
+
+	vec4	colAmount;
+	Mover_GetPos(pAC->mpBoneCollapse, colAmount);
+
+	Clay_Sizing	cs	={0};
+
+	cs.width	=CLAY_SIZING_FIT(0);
+
+	if(colState == NOT_COLLAPSING)
+	{
+		cs.height	=CLAY_SIZING_FIT(0);
+	}
+	else if(colState == GROWING)
+	{
+		cs.height	=CLAY_SIZING_FIXED(BONE_VERT_SIZE - colAmount[0]);
+	}
+	else
+	{
+		cs.height	=CLAY_SIZING_FIXED(colAmount[0]);
+	}
 
 	//create an inner rect sized for the text
 	Clay__OpenElement();
 	Clay__AttachId(Clay__HashString(csNode, 0, 0));
-	CLAY_LAYOUT({ .childGap = 4, .padding = { 8, 8, 2, 2 },
-			.sizing = { .width = CLAY_SIZING_FIT(0), .height = CLAY_SIZING_FIT(0) }}),
+	CLAY_LAYOUT({ .childGap = 4, .padding = { 8, 8, 2, 2 },	.sizing = cs}),
 		Clay_OnHover(sOnHoverBone, (intptr_t)pAC),		
 		CLAY_RECTANGLE({ .cornerRadius = {6},
 			//selected, hovered, or normal?
 			.color = bSelected? COLOR_GOLD : (Clay_Hovered()? COLOR_ORANGE : COLOR_BLUE) });
 	
+	int	childColState	=colState;
 	if(bHasKids)
 	{
 		if(bCollapsed)
 		{
 			CLAY_TEXT(CLAY_STRING("+"), CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 0, 0, 255} }));
+			if(bAnimating)
+			{
+				childColState	=COLLAPSING;
+			}
 		}
 		else
 		{
 			CLAY_TEXT(CLAY_STRING("-"), CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 0, 0, 255} }));
+			if(bAnimating)
+			{
+				childColState	=GROWING;
+			}
 		}
 	}
 	CLAY_TEXT(csNode, CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 0, 0, 255} })),
@@ -2404,14 +2538,16 @@ static void sSkeletonLayout(const GSNode *pNode, AppContext *pAC)
 	Clay__CloseElement();
 
 	//see if collapsed, if so recurse no further
-	if(!sIsCollapsed(pAC->mpBDD, pNode))
+	if(bCollapsed && !bAnimating)
+	{
+		//don't recurse (already closed nodes)
+	}
+	else if(!bCollapsed || pAC->mbSEAnimating)
 	{
 		//children should parent off the big rect
 		for(int i=0;i < pNode->mNumChildren;i++)
 		{
-//			printf("pCur: %s\n", utstring_body(SZList_IteratorValUT(pCur)));
-
-			sSkeletonLayout(pNode->mpChildren[i], pAC);
+			sSkeletonLayout(pNode->mpChildren[i], pAC, childColState);
 		}
 	}
 
@@ -2425,36 +2561,50 @@ static Clay_RenderCommandArray sCreateLayout(AppContext *pApp)
 {
 	Clay_BeginLayout();
 
-	Clay__OpenElement();
-
-	CLAY_ID("SideBar");
-
-	CLAY_LAYOUT({ .childAlignment = { .x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP},
-					.layoutDirection = CLAY_TOP_TO_BOTTOM,
-					.sizing = { .width = CLAY_SIZING_FIXED(300),
-					.height = CLAY_SIZING_GROW(0) },
-					.padding = {16, 16, 16, 16 },
-					.childGap = 16 });
-	CLAY_RECTANGLE({ .color = {150, 150, 155, 55} });
-	CLAY_SCROLL({ .horizontal = true, .vertical = true });
-
-	Clay__ElementPostConfiguration();
-
-	if(pApp->mpALib != NULL)
-	{
-		const Skeleton	*pSkel	=AnimLib_GetSkeleton(pApp->mpALib);
-		if(pSkel != NULL)
+	
+/*	CLAY(CLAY_ID("SkelPopoutButton"),
+		CLAY_LAYOUT({ .sizing = { .width = CLAY_SIZING_FIXED(10), .height = CLAY_SIZING_FIXED(30) }, .padding = { 4, 4, 4, 4 }}),
+		CLAY_FLOATING({ .zIndex = 1, .attachment = { CLAY_ATTACH_POINT_CENTER_TOP, CLAY_ATTACH_POINT_CENTER_TOP }, .offset = {0, 0} }),
+		CLAY_BORDER_OUTSIDE({ .color = {80, 80, 80, 255}, .width = 2 }),
+		CLAY_RECTANGLE({ .color = {140,80, 200, 200 }}))
 		{
-			for(int i=0;i < pSkel->mNumRoots;i++)
+			CLAY_TEXT(CLAY_STRING("I'm an inline floating container."), CLAY_TEXT_CONFIG({ .fontSize = 24, .textColor = {255,255,255,255} }));
+		}*/
+	vec4	mvPos, bcPos;
+	Mover_GetPos(pApp->mpSEM, mvPos);
+	Mover_GetPos(pApp->mpBoneCollapse, bcPos);
+
+	if(mvPos[0] > 0.0f)
+	{
+		Clay__OpenElement();
+
+		CLAY_ID("SideBar");
+
+		CLAY_LAYOUT({ .childAlignment = { .x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP},
+						.layoutDirection = CLAY_TOP_TO_BOTTOM,
+						.sizing = { .width = CLAY_SIZING_FIXED(mvPos[0]),
+						.height = CLAY_SIZING_GROW(0) },
+						.padding = {16, 16, 16, 16 },
+						.childGap = 16 });
+		CLAY_RECTANGLE({ .color = {150, 150, 155, 55} });
+		CLAY_SCROLL({ .horizontal = true, .vertical = true });
+
+		Clay__ElementPostConfiguration();
+
+		if(pApp->mpALib != NULL)
+		{
+			const Skeleton	*pSkel	=AnimLib_GetSkeleton(pApp->mpALib);
+			if(pSkel != NULL)
 			{
-				sSkeletonLayout(pSkel->mpRoots[i], pApp);
+				for(int i=0;i < pSkel->mNumRoots;i++)
+				{
+					sSkeletonLayout(pSkel->mpRoots[i], pApp, NOT_COLLAPSING);
+				}
 			}
 		}
+
+		Clay__CloseElement();
 	}
-
-	Clay__CloseElement();
-
-//	printf("Done\n");
 
 	return Clay_EndLayout();
 }
