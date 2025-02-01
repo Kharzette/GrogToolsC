@@ -2407,6 +2407,20 @@ static void sSetNodesAnimatingOff(BoneDisplayData *pBDD)
 	}
 }
 
+static bool sIsAnyNodeSelected(BoneDisplayData *pBDD)
+{
+	BoneDisplayData	*pCur;
+
+	for(pCur=pBDD;pCur != NULL;pCur=pCur->hh.next)
+	{
+		if(pCur->mbSelected)
+		{
+			return	true;
+		}
+	}
+	return	false;
+}
+
 static bool	sIsSelected(const BoneDisplayData *pBDD, const GSNode *pNode)
 {
 	BoneDisplayData	*pFound;
@@ -2570,7 +2584,7 @@ static Clay_RenderCommandArray sCreateLayout(AppContext *pApp)
 {
 	Clay_BeginLayout();
 
-	
+	//want a button to close open maybe
 /*	CLAY(CLAY_ID("SkelPopoutButton"),
 		CLAY_LAYOUT({ .sizing = { .width = CLAY_SIZING_FIXED(10), .height = CLAY_SIZING_FIXED(30) }, .padding = { 4, 4, 4, 4 }}),
 		CLAY_FLOATING({ .zIndex = 1, .attachment = { CLAY_ATTACH_POINT_CENTER_TOP, CLAY_ATTACH_POINT_CENTER_TOP }, .offset = {0, 0} }),
@@ -2586,19 +2600,24 @@ static Clay_RenderCommandArray sCreateLayout(AppContext *pApp)
 	if(mvPos[0] > 0.0f)
 	{
 		Clay__OpenElement();
-
 		CLAY_ID("SideBar");
 
 		CLAY_LAYOUT({ .childAlignment = { .x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP},
 						.layoutDirection = CLAY_TOP_TO_BOTTOM,
 						.sizing = { .width = CLAY_SIZING_FIXED(mvPos[0]),
-						.height = CLAY_SIZING_GROW(0) },
-						.padding = {16, 16, 16, 16 },
-						.childGap = 16 });
+						.height = CLAY_SIZING_FIT(0) },
+//						.padding = {16, 16, 16, 16 },
+//						.childGap = 16
+						});
 		CLAY_RECTANGLE({ .color = {150, 150, 155, 55} });
-		CLAY_SCROLL({ .horizontal = true, .vertical = true });
 
-		Clay__ElementPostConfiguration();
+		Clay__OpenElement();
+		CLAY_ID("SkellyEditor");
+		CLAY_LAYOUT({ .childAlignment = { .x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP},
+						.layoutDirection = CLAY_TOP_TO_BOTTOM,
+						.sizing = { .width = CLAY_SIZING_FIXED(mvPos[0]),
+						.height = CLAY_SIZING_FIT(0) }});
+		CLAY_SCROLL({ .horizontal = true, .vertical = true });
 
 		if(pApp->mpALib != NULL)
 		{
@@ -2610,6 +2629,7 @@ static Clay_RenderCommandArray sCreateLayout(AppContext *pApp)
 					sSkeletonLayout(pSkel->mpRoots[i], pApp, NOT_COLLAPSING);
 				}
 			}
+			else
 			{
 				CLAY_TEXT(CLAY_STRING("No Skeleton Loaded!"), CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 70, 70, 155} }));
 			}
@@ -2619,7 +2639,31 @@ static Clay_RenderCommandArray sCreateLayout(AppContext *pApp)
 			CLAY_TEXT(CLAY_STRING("No Skeleton Loaded!"), CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 70, 70, 155} }));
 		}
 
-		Clay__CloseElement();
+		Clay__ElementPostConfiguration();	//SkellyEditor
+		Clay__CloseElement();	//skelly editor
+
+		if(sIsAnyNodeSelected(pApp->mpBDD))
+		{
+			//create a bottom section for info
+			Clay__OpenElement();
+			CLAY_ID("SkellyInfoBox");
+			CLAY_LAYOUT({ .childAlignment = { .x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_CENTER},
+							.layoutDirection = CLAY_TOP_TO_BOTTOM,
+							.sizing = { .width = CLAY_SIZING_FIXED(mvPos[0]),
+							.height = CLAY_SIZING_FIT(0) },
+							.padding = {16, 16, 16, 16 },
+							.childGap = 16 });
+
+			CLAY_BORDER_OUTSIDE({ .color = {80, 80, 80, 255}, .width = 2 }),
+				CLAY_RECTANGLE({ .color = {150, 150, 155, 55} }),
+				CLAY_TEXT(CLAY_STRING("Extra info here!\nBlahblah\nCollision shape info here too."), CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 70, 70, 155} }));
+
+			Clay__ElementPostConfiguration();	//info box
+			Clay__CloseElement();	//info box
+		}
+
+		Clay__ElementPostConfiguration();	//SideBar
+		Clay__CloseElement();	//sidebar
 	}
 
 	return Clay_EndLayout();
