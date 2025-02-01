@@ -38,8 +38,8 @@
 #define COLOR_ORANGE		(Clay_Color) {225, 138, 50, 255}
 #define COLOR_BLUE			(Clay_Color) {111, 173, 162, 255}
 #define COLOR_GOLD			(Clay_Color) {255, 222, 162, 255}
-#define	BONE_VERT_SIZE		30
-#define	COLLAPSE_INTERVAL	(0.5f)
+#define	BONE_VERTICAL_SIZE	30
+#define	COLLAPSE_INTERVAL	(0.25f)
 
 //little hashy struct for tracking bone display data
 typedef struct	BoneDisplayData_t
@@ -1167,7 +1167,7 @@ static void CollapseBonesEH(void *pContext, const SDL_Event *pEvt)
 	}
 
 	Mover_SetUpMove(pTS->mpBoneCollapse,
-		(vec4){BONE_VERT_SIZE,0,0,0}, (vec4){0,0,0,0},
+		(vec4){BONE_VERTICAL_SIZE,0,0,0}, (vec4){0,0,0,0},
 		COLLAPSE_INTERVAL, 0.2f, 0.2f);
 
 	pTS->mbSEAnimating	=true;
@@ -1206,19 +1206,22 @@ static void SkelPopOutEH(void *pContext, const SDL_Event *pEvt)
 		if(pTS->mbSEVisible)
 		{
 			//closing from partway open
-			Mover_SetUpMove(pTS->mpSEM, mvPos, startPos, 0.25f, 0.2f, 0.2f);
+			Mover_SetUpMove(pTS->mpSEM, mvPos, startPos,
+				COLLAPSE_INTERVAL / 2.0f, 0.2f, 0.2f);
 		}
 		else
 		{
 			//opening from partway closed
-			Mover_SetUpMove(pTS->mpSEM, mvPos, endPos, 0.25f, 0.2f, 0.2f);
+			Mover_SetUpMove(pTS->mpSEM, mvPos, endPos,
+				COLLAPSE_INTERVAL / 2.0f, 0.2f, 0.2f);
 		}
 	}
 	else
 	{
 		if(!pTS->mbSEVisible)
 		{
-			Mover_SetUpMove(pTS->mpSEM, startPos, endPos, 0.5f, 0.2f, 0.2f);
+			Mover_SetUpMove(pTS->mpSEM, startPos, endPos,
+				COLLAPSE_INTERVAL, 0.2f, 0.2f);
 		}
 	}
 
@@ -2479,20 +2482,23 @@ static void sSkeletonLayout(const GSNode *pNode, AppContext *pAC, int colState)
 	//see if bone has any children
 	bool	bHasKids	=(pNode->mNumChildren > 0);
 
+	//this is a 0 to BONE_VERTICAL_SIZE amount
 	vec4	colAmount;
 	Mover_GetPos(pAC->mpBoneCollapse, colAmount);
 
-	Clay_Sizing	cs	={0};
-
+	//width is always fit
+	Clay_Sizing	cs;
 	cs.width	=CLAY_SIZING_FIT(0);
 
+	//height is either fit or semi squished if animating
+	//TODO: maybe hide text while squishing?  It gets all goofy
 	if(colState == NOT_COLLAPSING)
 	{
 		cs.height	=CLAY_SIZING_FIT(0);
 	}
 	else if(colState == GROWING)
 	{
-		cs.height	=CLAY_SIZING_FIXED(BONE_VERT_SIZE - colAmount[0]);
+		cs.height	=CLAY_SIZING_FIXED(BONE_VERTICAL_SIZE - colAmount[0]);
 	}
 	else
 	{
@@ -2508,6 +2514,7 @@ static void sSkeletonLayout(const GSNode *pNode, AppContext *pAC, int colState)
 			//selected, hovered, or normal?
 			.color = bSelected? COLOR_GOLD : (Clay_Hovered()? COLOR_ORANGE : COLOR_BLUE) });
 	
+	//keep the passed in state
 	int	childColState	=colState;
 	if(bHasKids)
 	{
@@ -2516,6 +2523,7 @@ static void sSkeletonLayout(const GSNode *pNode, AppContext *pAC, int colState)
 			CLAY_TEXT(CLAY_STRING("+"), CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 0, 0, 255} }));
 			if(bAnimating)
 			{
+				//if this node is collapsing, squish child nodes
 				childColState	=COLLAPSING;
 			}
 		}
@@ -2524,6 +2532,7 @@ static void sSkeletonLayout(const GSNode *pNode, AppContext *pAC, int colState)
 			CLAY_TEXT(CLAY_STRING("-"), CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 0, 0, 255} }));
 			if(bAnimating)
 			{
+				//if this node is animating, grow child nodes
 				childColState	=GROWING;
 			}
 		}
