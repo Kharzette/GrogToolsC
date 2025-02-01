@@ -2610,6 +2610,13 @@ static Clay_RenderCommandArray sCreateLayout(AppContext *pApp)
 					sSkeletonLayout(pSkel->mpRoots[i], pApp, NOT_COLLAPSING);
 				}
 			}
+			{
+				CLAY_TEXT(CLAY_STRING("No Skeleton Loaded!"), CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 70, 70, 155} }));
+			}
+		}
+		else
+		{
+			CLAY_TEXT(CLAY_STRING("No Skeleton Loaded!"), CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 70, 70, 155} }));
 		}
 
 		Clay__CloseElement();
