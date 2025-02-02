@@ -21,6 +21,7 @@
 #include	"MeshLib/GSNode.h"
 #include	"MeshLib/Static.h"
 #include	"MeshLib/CommonPrims.h"
+#include	"MeshLib/Skin.h"
 #include	"InputLib/Input.h"
 
 
@@ -867,7 +868,7 @@ static void	SetupKeyBinds(Input *pInp)
 	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_c, CollapseBonesEH);	//collapse/uncollapse selected bones
 	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_m, MarkUnusedBonesEH);	//mark bones that aren't used in vert weights
 	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_DELETE, DeleteBonesEH);	//nuke selected bones
-	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_p, SkelPopOutEH);	//nuke selected bones
+	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_p, SkelPopOutEH);		//pop outsidebar
 	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_ESCAPE, EscEH);
 
 	//held bindings
@@ -2457,6 +2458,53 @@ static bool	sIsAnimating(const BoneDisplayData *pBDD, const GSNode *pNode)
 	return	pFound->mbAnimating;
 }
 
+static char	sShapeNames[4][8]	={	{"Box"}, {"Sphere"}, {"Capsule"}, {"Invalid"}	};
+static char	sInfoText[256];
+
+//figure out what should go in the info box based
+//on which nodes are selected
+static void	sMakeInfoString(const BoneDisplayData *pBDD, const Character *pChr)
+{
+	BoneDisplayData	*pCur;
+	GSNode			*pNode;
+
+	int	numSelected	=0;
+	for(pCur=pBDD;pCur != NULL;pCur=pCur->hh.next)
+	{
+		if(pCur->mbSelected)
+		{
+			numSelected++;
+			pNode	=pCur->mpNode;
+		}
+	}
+
+	if(numSelected <= 0)
+	{
+		return;
+	}
+
+	if(numSelected > 1)
+	{
+		sprintf(sInfoText, "Multiple bones selected.  Use C to collapse/expand bones, or Del to delete.");
+		return;
+	}
+
+	if(pChr == NULL)
+	{
+		sprintf(sInfoText, "Bone %s of index %d selected.  Load a character for collision info.",
+			utstring_body(pNode->szName), pNode->mIndex);
+		return;
+	}
+
+	const Skin	*pSkin	=Character_GetSkin(pChr);
+
+	int	choice	=Skin_GetBoundChoice(pSkin, pNode->mIndex);
+
+	sprintf(sInfoText, "Bone %s of index %d using collision shape %s",
+		utstring_body(pNode->szName), pNode->mIndex, sShapeNames[choice]);
+}
+
+
 #define	NOT_COLLAPSING	0
 #define	GROWING			1
 #define	COLLAPSING		2
@@ -2654,9 +2702,15 @@ static Clay_RenderCommandArray sCreateLayout(AppContext *pApp)
 							.padding = {16, 16, 16, 16 },
 							.childGap = 16 });
 
+			sMakeInfoString(pApp->mpBDD, pApp->mpChar);
+			Clay_String	csInfo;
+
+			csInfo.chars	=sInfoText;
+			csInfo.length	=strlen(sInfoText);
+
 			CLAY_BORDER_OUTSIDE({ .color = {80, 80, 80, 255}, .width = 2 }),
 				CLAY_RECTANGLE({ .color = {150, 150, 155, 55} }),
-				CLAY_TEXT(CLAY_STRING("Extra info here!\nBlahblah\nCollision shape info here too."), CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 70, 70, 155} }));
+				CLAY_TEXT(csInfo, CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 70, 70, 155} }));
 
 			Clay__ElementPostConfiguration();	//info box
 			Clay__CloseElement();	//info box
