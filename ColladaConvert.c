@@ -8,6 +8,7 @@
 #include	"UtilityLib/DictionaryStuff.h"
 #include	"UtilityLib/UserSettings.h"
 #include	"UtilityLib/Mover.h"
+#include	"UtilityLib/PrimFactory.h"
 #include	"MaterialLib/StuffKeeper.h"
 #include	"MaterialLib/Material.h"
 #include	"MaterialLib/MaterialLib.h"
@@ -33,7 +34,7 @@
 #define	MOVE_RATE		0.1f
 #define	MOUSE_TO_ANG	0.001f
 #define	POW_SLIDER_MAX	100
-#define	MAX_UI_VERTS	(8192 * 2)
+#define	MAX_UI_VERTS	(8192 * 4)
 
 //clay defines
 #define COLOR_ORANGE		(Clay_Color) {225, 138, 50, 255}
@@ -74,6 +75,9 @@ typedef struct AppContext_t
 
 	//D3D stuff
 	ID3D11RasterizerState	*mp3DRast;
+	ID3D11InputLayout		*mpPrimLayout;
+	ID3D11VertexShader		*mpWNormWPos;
+	ID3D11PixelShader		*mpTriSolidSpec;
 
 	//grogstuff
 	GraphicsDevice	*mpGD;
@@ -94,6 +98,9 @@ typedef struct AppContext_t
 	//prims
 	LightRay	*mpLR;
 	AxisXYZ		*mpAxis;
+	PrimObject	*mpSphere;	//for bone colliders
+	PrimObject	*mpCube;	//for bone colliders
+	PrimObject	*mpCapsule;	//for bone colliders
 
 	//misc data
 	vec3	mLightDir;
@@ -162,6 +169,7 @@ static const Image		*sCreateTexImage(const UT_string *szTex);
 static bool				sSelectPopupItem(PopUp *pPop, const char *pSZ);
 static int 				sGetSelectedIndex(const ListBox *pLB);
 static void				sDeleteListBoxItem(ListBox *pLB, int idx);
+static void				sRenderCollisionShapes(AppContext *pAC);
 static void				sSetDefaultCel(AppContext *pApp);
 static uint32_t			sSpawnReName(AppContext *pApp, V2Df pos, const char *szOld,
 							ListBox *pLB, void *pItem, ReNameFunc reName);
@@ -614,12 +622,20 @@ static AppContext	*sAppCreate(void)
 		return	NULL;
 	}
 
+	//for prim draws
+	pApp->mpPrimLayout		=StuffKeeper_GetInputLayout(pApp->mpSK, "VPosNorm");
+	pApp->mpWNormWPos		=StuffKeeper_GetVertexShader(pApp->mpSK, "WNormWPosVS");
+	pApp->mpTriSolidSpec	=StuffKeeper_GetPixelShader(pApp->mpSK, "TriSolidSpecPS");
+
 	//manually call event to fill boxes
 	sShaderFileChanged(pApp, NULL);
 
-	//test prims
+	//prims
 	pApp->mpLR		=CP_CreateLightRay(5.0f, 0.25f, pApp->mpGD, pApp->mpSK);
 	pApp->mpAxis	=CP_CreateAxis(5.0f, 0.1f, pApp->mpGD, pApp->mpSK);
+	pApp->mpCube	=PF_CreateCube(1.0f, false, pApp->mpGD);
+	pApp->mpSphere	=PF_CreateSphere((vec3){0,0,0}, 1.0f, pApp->mpGD);
+	pApp->mpCapsule	=PF_CreateCapsule(1.0f, 2.0f, pApp->mpGD);
 
 	pApp->mpCBK	=CBK_Create(pApp->mpGD);
 	pApp->mpPP	=PP_Create(pApp->mpGD, pApp->mpSK, pApp->mpCBK);
@@ -672,7 +688,7 @@ static AppContext	*sAppCreate(void)
     uint64_t totalMemorySize = Clay_MinMemorySize();
     Clay_Arena clayMemory = Clay_CreateArenaWithCapacityAndMemory(totalMemorySize, malloc(totalMemorySize));
     Clay_Initialize(clayMemory, (Clay_Dimensions) { (float)RESX, (float)RESY }, (Clay_ErrorHandler) { sHandleClayErrors });
-    Clay_SetMeasureTextFunction(UI_MeasureText, (uintptr_t)pApp->mpUI);
+    Clay_SetMeasureTextFunction(UI_MeasureText, pApp->mpUI);
 
 	Clay_SetDebugModeEnabled(true);
 
@@ -707,8 +723,8 @@ static void sRender(AppContext *pApp, const real64_t prTime, const real64_t cTim
 {
 	vec4	lightRayCol	={	1.0f, 1.0f, 0.0f, 1.0f	};
 	vec4	XAxisCol	={	1.0f, 0.0f, 0.0f, 1.0f	};
-	vec4	YAxisCol	={	0.0f, 0.0f, 1.0f, 1.0f	};
-	vec4	ZAxisCol	={	0.0f, 1.0f, 0.0f, 1.0f	};
+	vec4	YAxisCol	={	0.0f, 1.0f, 0.0f, 1.0f	};
+	vec4	ZAxisCol	={	0.0f, 0.0f, 1.0f, 1.0f	};
 
 	if(pApp->mpALib != NULL)
 	{
@@ -785,6 +801,9 @@ static void sRender(AppContext *pApp, const real64_t prTime, const real64_t cTim
 							pApp->mpGD, pApp->mpCBK);
 		}
 	}
+
+	//draw collision shapes if needed
+	sRenderCollisionShapes(pApp);
 
 	//set proj for 2D
 	CBK_SetProjection(pApp->mpCBK, pApp->mTextProj);
@@ -2458,6 +2477,79 @@ static bool	sIsAnimating(const BoneDisplayData *pBDD, const GSNode *pNode)
 	return	pFound->mbAnimating;
 }
 
+static void sRenderNodeCollisionShape(AppContext *pAC, const GSNode *pNode)
+{
+	if(pAC->mpChar == NULL)
+	{
+		return;
+	}
+
+	const Skin		*pSkin	=Character_GetSkin(pAC->mpChar);
+	const Skeleton	*pSkel	=AnimLib_GetSkeleton(pAC->mpALib);
+
+	int	choice	=Skin_GetBoundChoice(pSkin, pNode->mIndex);
+
+	vec2	capSize;
+	Skin_GetBoundSize(pSkin, pNode->mIndex, capSize);
+
+	mat4	boneMat;
+	Skin_GetBoneByIndexNoBind(pSkin, pSkel, pNode->mIndex, boneMat);
+
+	GD_IASetVertexBuffers(pAC->mpGD, pAC->mpCapsule->mpVB, pAC->mpCapsule->mVertSize, 0);
+	GD_IASetIndexBuffers(pAC->mpGD, pAC->mpCapsule->mpIB, DXGI_FORMAT_R16_UINT, 0);
+	GD_VSSetShader(pAC->mpGD, pAC->mpWNormWPos);
+	GD_PSSetShader(pAC->mpGD, pAC->mpTriSolidSpec);
+	GD_IASetInputLayout(pAC->mpGD, pAC->mpPrimLayout);
+
+	//materialish stuff
+	CBK_SetSolidColour(pAC->mpCBK, (vec4){1,1,1,1});
+
+	vec3	lightColour0	={	1,		1,		1		};
+	vec3	lightColour1	={	0.8f,	0.8f,	0.8f	};
+	vec3	lightColour2	={	0.6f,	0.6f,	0.6f	};
+	vec3	specColour		={	1,		1,		1		};
+	vec3	localScale		={	capSize[0],	capSize[1],	capSize[0]	};
+
+	CBK_SetLocalScale(pAC->mpCBK, localScale);
+
+	CBK_SetTrilights3(pAC->mpCBK, lightColour0, lightColour1, lightColour2, pAC->mLightDir);
+	CBK_SetSpecular(pAC->mpCBK, specColour, 1.0f);
+
+	CBK_SetWorldMat(pAC->mpCBK, boneMat);
+	CBK_UpdateObject(pAC->mpCBK, pAC->mpGD);
+
+	GD_DrawIndexed(pAC->mpGD, pAC->mpCapsule->mIndexCount, 0, 0);
+}
+
+static void	sRenderCollisionShapes(AppContext *pAC)
+{
+	if(pAC->mpChar == NULL)
+	{
+		return;
+	}
+
+	const Skin		*pSkin	=Character_GetSkin(pAC->mpChar);
+	const Skeleton	*pSkel	=AnimLib_GetSkeleton(pAC->mpALib);
+
+	BoneDisplayData	*pCur;
+	GSNode			*pNode;
+
+	int	numSelected	=0;
+	for(pCur=pAC->mpBDD;pCur != NULL;pCur=pCur->hh.next)
+	{
+		if(pCur->mbSelected)
+		{
+			sRenderNodeCollisionShape(pAC, pCur->mpNode);
+			numSelected++;
+		}
+	}
+
+	if(numSelected <= 0)
+	{
+		return;
+	}
+}
+
 static char	sShapeNames[4][8]	={	{"Box"}, {"Sphere"}, {"Capsule"}, {"Invalid"}	};
 static char	sInfoText[256];
 
@@ -2465,11 +2557,10 @@ static char	sInfoText[256];
 //on which nodes are selected
 static void	sMakeInfoString(const BoneDisplayData *pBDD, const Character *pChr)
 {
-	BoneDisplayData	*pCur;
-	GSNode			*pNode;
+	const GSNode	*pNode;
 
 	int	numSelected	=0;
-	for(pCur=pBDD;pCur != NULL;pCur=pCur->hh.next)
+	for(const BoneDisplayData *pCur=pBDD;pCur != NULL;pCur=pCur->hh.next)
 	{
 		if(pCur->mbSelected)
 		{
@@ -2525,12 +2616,13 @@ static void sSkeletonLayout(const GSNode *pNode, AppContext *pAC, int colState)
 	//create a big encompassing box that contains
 	//all child nodes too, will this work with no ID?
 	Clay__OpenElement();
-	CLAY_LAYOUT({ .childGap = 4, .padding = { 16, 0, 0, 0},
-					.layoutDirection = CLAY_TOP_TO_BOTTOM,
-					.sizing = { .width = CLAY_SIZING_FIT(0),
-						.height = CLAY_SIZING_FIT(0) }}),
-		CLAY_RECTANGLE({ .color = {10, 221, 25, 45} });
-	Clay__ElementPostConfiguration();
+
+	Clay_ElementDeclaration	ced	={	.layout = { .childGap = 4,
+		.padding = { 16, 0, 0, 0}, .layoutDirection = CLAY_TOP_TO_BOTTOM,
+		.sizing = { .width = CLAY_SIZING_FIT(0), .height = CLAY_SIZING_FIT(0) }},
+		.backgroundColor ={10, 221, 25, 45}	};
+
+	Clay__ConfigureOpenElement(ced);
 
 	//see if selected
 	bool	bSelected	=sIsSelected(pAC->mpBDD, pNode);
@@ -2569,12 +2661,19 @@ static void sSkeletonLayout(const GSNode *pNode, AppContext *pAC, int colState)
 
 	//create an inner rect sized for the text
 	Clay__OpenElement();
+
+	//this one will have the bone name as an ID
 	Clay__AttachId(Clay__HashString(csNode, 0, 0));
-	CLAY_LAYOUT({ .childGap = 4, .padding = { 8, 8, 2, 2 },	.sizing = cs}),
-		Clay_OnHover(sOnHoverBone, (intptr_t)pAC),		
-		CLAY_RECTANGLE({ .cornerRadius = {6},
-			//selected, hovered, or normal?
-			.color = bSelected? COLOR_GOLD : (Clay_Hovered()? COLOR_ORANGE : COLOR_BLUE) });
+
+	Clay_ElementDeclaration	ced2	={	.layout = { .childGap = 4,
+		.padding = { 8, 8, 2, 2 },	.sizing = cs},
+		.cornerRadius = { 6 }, .backgroundColor = bSelected?
+			COLOR_GOLD : (Clay_Hovered()? COLOR_ORANGE : COLOR_BLUE) };
+	
+	//is this where this goes?
+	Clay_OnHover(sOnHoverBone, (intptr_t)pAC);
+
+	Clay__ConfigureOpenElement(ced2);
 	
 	//keep the passed in state
 	int	childColState	=colState;
@@ -2600,10 +2699,6 @@ static void sSkeletonLayout(const GSNode *pNode, AppContext *pAC, int colState)
 		}
 	}
 	CLAY_TEXT(csNode, CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 0, 0, 255} })),
-
-	Clay__ElementPostConfiguration();
-
-//	printf("CloseElement: %s\n", csNode.chars);
 
 	//this closes the inner text nubbins
 	Clay__CloseElement();
@@ -2650,22 +2745,29 @@ static Clay_RenderCommandArray sCreateLayout(AppContext *pApp)
 		Clay__OpenElement();
 		CLAY_ID("SideBar");
 
-		CLAY_LAYOUT({ .childAlignment = { .x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP},
-						.layoutDirection = CLAY_TOP_TO_BOTTOM,
-						.sizing = { .width = CLAY_SIZING_FIXED(mvPos[0]),
-						.height = CLAY_SIZING_FIT(0) },
-//						.padding = {16, 16, 16, 16 },
-//						.childGap = 16
-						});
-		CLAY_RECTANGLE({ .color = {150, 150, 155, 55} });
+		Clay_ElementDeclaration	cedSB	={	.layout = {
+			.childAlignment = { .x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP},
+			.layoutDirection = CLAY_TOP_TO_BOTTOM,
+			.sizing = { .width = CLAY_SIZING_FIXED(mvPos[0]),
+			.height = CLAY_SIZING_FIT(0) },
+//			.padding = {16, 16, 16, 16 },
+//			.childGap = 16
+			}, .backgroundColor = {150, 150, 155, 55}
+		};
+
+		Clay__ConfigureOpenElement(cedSB);
 
 		Clay__OpenElement();
 		CLAY_ID("SkellyEditor");
-		CLAY_LAYOUT({ .childAlignment = { .x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP},
-						.layoutDirection = CLAY_TOP_TO_BOTTOM,
-						.sizing = { .width = CLAY_SIZING_FIXED(mvPos[0]),
-						.height = CLAY_SIZING_FIT(0) }});
-		CLAY_SCROLL({ .horizontal = true, .vertical = true });
+
+		Clay_ElementDeclaration	cedSE	={	.layout = {
+			.childAlignment = { .x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP},
+			.layoutDirection = CLAY_TOP_TO_BOTTOM,
+			.sizing = { .width = CLAY_SIZING_FIXED(mvPos[0]),
+			.height = CLAY_SIZING_FIT(0) }
+			}, .scroll = { .horizontal = true, .vertical = true }
+		};
+		Clay__ConfigureOpenElement(cedSE);
 
 		if(pApp->mpALib != NULL)
 		{
@@ -2686,37 +2788,33 @@ static Clay_RenderCommandArray sCreateLayout(AppContext *pApp)
 		{
 			CLAY_TEXT(CLAY_STRING("No Skeleton Loaded!"), CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 70, 70, 155} }));
 		}
-
-		Clay__ElementPostConfiguration();	//SkellyEditor
 		Clay__CloseElement();	//skelly editor
 
 		if(sIsAnyNodeSelected(pApp->mpBDD))
 		{
 			//create a bottom section for info
-			Clay__OpenElement();
-			CLAY_ID("SkellyInfoBox");
-			CLAY_LAYOUT({ .childAlignment = { .x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_CENTER},
-							.layoutDirection = CLAY_TOP_TO_BOTTOM,
-							.sizing = { .width = CLAY_SIZING_FIXED(mvPos[0]),
-							.height = CLAY_SIZING_FIT(0) },
-							.padding = {16, 16, 16, 16 },
-							.childGap = 16 });
-
 			sMakeInfoString(pApp->mpBDD, pApp->mpChar);
 			Clay_String	csInfo;
 
 			csInfo.chars	=sInfoText;
 			csInfo.length	=strlen(sInfoText);
 
-			CLAY_BORDER_OUTSIDE({ .color = {80, 80, 80, 255}, .width = 2 }),
-				CLAY_RECTANGLE({ .color = {150, 150, 155, 55} }),
+			CLAY({ .id = CLAY_ID("SkellyInfoBox"),
+				.layout = {
+					.childAlignment = { .x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_CENTER },
+					.layoutDirection = CLAY_TOP_TO_BOTTOM,
+					.sizing = { .width = CLAY_SIZING_FIXED(mvPos[0]),
+						.height = CLAY_SIZING_FIT(0)
+					},
+					.padding = {16, 16, 16, 16 },
+					.childGap = 16
+				},
+				.border = { .color = {80, 80, 80, 255}, .width = 2 },
+				.backgroundColor =  {150, 150, 155, 55}})
+			{
 				CLAY_TEXT(csInfo, CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 70, 70, 155} }));
-
-			Clay__ElementPostConfiguration();	//info box
-			Clay__CloseElement();	//info box
+			}
 		}
-
-		Clay__ElementPostConfiguration();	//SideBar
 		Clay__CloseElement();	//sidebar
 	}
 

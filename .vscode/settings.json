@@ -1,6 +1,6 @@
 {
-	"CurrentGame": "/mnt/SkyFather/Games/CurrentGame",
-	"CurrentGameLibs": "${config:CurrentGame}/libs",
+	"CurrentGame": "/mnt/SkyFather/Games/CurrentGame",	//point this at your game dir
+	"CurrentGameLibs": "${config:CurrentGame}/libs",	//this libs dir will store the .so files
     "files.associations": {
         "osmain.h": "c",
         "nappgui.h": "c",
@@ -9,6 +9,7 @@
         "material.h": "c",
         "graphicsdevice.h": "c",
         "skeleton.h": "c",
-        "vector": "c"
+        "vector": "c",
+        "animlib.h": "c"
     }
 }
