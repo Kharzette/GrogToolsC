@@ -773,14 +773,13 @@ static void sRender(AppContext *pApp, const real64_t prTime, const real64_t cTim
 	//update frame CB
 	CBK_UpdateFrame(pApp->mpCBK, pApp->mpGD);
 
+	//draw xyz axis
+	CP_DrawAxis(pApp->mpAxis, pApp->mLightDir, XAxisCol, YAxisCol, ZAxisCol, pApp->mpCBK, pApp->mpGD);
 	//draw light ray
 	{
 		vec3	rayLoc	={	0.0f, 5.0f, 0.0f	};
 		CP_DrawLightRay(pApp->mpLR, pApp->mLightDir, lightRayCol, rayLoc, pApp->mpCBK, pApp->mpGD);
 	}
-
-	//draw xyz axis
-	CP_DrawAxis(pApp->mpAxis, pApp->mLightDir, XAxisCol, YAxisCol, ZAxisCol, pApp->mpCBK, pApp->mpGD);
 
 	GD_PSSetSampler(pApp->mpGD, StuffKeeper_GetSamplerState(pApp->mpSK, "PointClamp"), 0);
 
@@ -1601,6 +1600,12 @@ static void sAssignMaterial(AppContext *pAC, Event *pEvt)
 
 	const char	*szMatSel	=sGetSelectedMaterialName(pAC);
 	int	meshSelected		=sGetSelectedMeshPartIndex(pAC);
+
+	if(meshSelected < 0)
+	{
+		printf("No mesh selected...\n");
+		return;
+	}
 
 	if(pAC->mpChar != NULL)
 	{
@@ -2489,14 +2494,14 @@ static void sRenderNodeCollisionShape(AppContext *pAC, const GSNode *pNode)
 
 	int	choice	=Skin_GetBoundChoice(pSkin, pNode->mIndex);
 
-	vec2	capSize;
+	vec4	capSize;
 	Skin_GetBoundSize(pSkin, pNode->mIndex, capSize);
 
 	mat4	boneMat;
 	Skin_GetBoneByIndexNoBind(pSkin, pSkel, pNode->mIndex, boneMat);
 
-	GD_IASetVertexBuffers(pAC->mpGD, pAC->mpCapsule->mpVB, pAC->mpCapsule->mVertSize, 0);
-	GD_IASetIndexBuffers(pAC->mpGD, pAC->mpCapsule->mpIB, DXGI_FORMAT_R16_UINT, 0);
+	GD_IASetVertexBuffers(pAC->mpGD, pAC->mpSphere->mpVB, pAC->mpSphere->mVertSize, 0);
+	GD_IASetIndexBuffers(pAC->mpGD, pAC->mpSphere->mpIB, DXGI_FORMAT_R16_UINT, 0);
 	GD_VSSetShader(pAC->mpGD, pAC->mpWNormWPos);
 	GD_PSSetShader(pAC->mpGD, pAC->mpTriSolidSpec);
 	GD_IASetInputLayout(pAC->mpGD, pAC->mpPrimLayout);
@@ -2508,7 +2513,7 @@ static void sRenderNodeCollisionShape(AppContext *pAC, const GSNode *pNode)
 	vec3	lightColour1	={	0.8f,	0.8f,	0.8f	};
 	vec3	lightColour2	={	0.6f,	0.6f,	0.6f	};
 	vec3	specColour		={	1,		1,		1		};
-	vec3	localScale		={	capSize[0],	capSize[1],	capSize[0]	};
+	vec3	localScale		={	capSize[3],	capSize[3],	capSize[3]	};
 
 	CBK_SetLocalScale(pAC->mpCBK, localScale);
 
@@ -2518,12 +2523,16 @@ static void sRenderNodeCollisionShape(AppContext *pAC, const GSNode *pNode)
 	CBK_SetWorldMat(pAC->mpCBK, boneMat);
 	CBK_UpdateObject(pAC->mpCBK, pAC->mpGD);
 
-	GD_DrawIndexed(pAC->mpGD, pAC->mpCapsule->mIndexCount, 0, 0);
+	GD_DrawIndexed(pAC->mpGD, pAC->mpSphere->mIndexCount, 0, 0);
 }
 
 static void	sRenderCollisionShapes(AppContext *pAC)
 {
 	if(pAC->mpChar == NULL)
+	{
+		return;
+	}
+	if(pAC->mpALib == NULL)
 	{
 		return;
 	}
