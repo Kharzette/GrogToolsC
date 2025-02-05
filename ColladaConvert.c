@@ -14,6 +14,7 @@
 #include	"MaterialLib/MaterialLib.h"
 #include	"MaterialLib/CBKeeper.h"
 #include	"MaterialLib/PostProcess.h"
+#define CLAY_IMPLEMENTATION
 #include	"MaterialLib/UIStuff.h"
 #include	"MeshLib/AnimLib.h"
 #include	"MeshLib/Mesh.h"
@@ -24,6 +25,7 @@
 #include	"MeshLib/CommonPrims.h"
 #include	"MeshLib/Skin.h"
 #include	"InputLib/Input.h"
+#include	"SkellyEditor.h"
 
 
 #define	RESX			1280
@@ -36,25 +38,11 @@
 #define	POW_SLIDER_MAX	100
 #define	MAX_UI_VERTS	(8192 * 4)
 
-//clay defines
+//clay colours
 #define COLOR_ORANGE		(Clay_Color) {225, 138, 50, 255}
 #define COLOR_BLUE			(Clay_Color) {111, 173, 162, 255}
 #define COLOR_GOLD			(Clay_Color) {255, 222, 162, 255}
-#define	BONE_VERTICAL_SIZE	30
-#define	COLLAPSE_INTERVAL	(0.25f)
 
-//little hashy struct for tracking bone display data
-typedef struct	BoneDisplayData_t
-{
-	const GSNode	*mpNode;
-
-	bool	mbSelected;
-	bool	mbInfluencing;	//some part of the mesh uses this bone
-	bool	mbCollapsed;	//draw this node collapsed
-	bool	mbAnimating;	//mid opening or closing
-
-	UT_hash_handle	hh;
-}	BoneDisplayData;
 
 //this gets passed into events and such
 //will likely grow
@@ -75,9 +63,6 @@ typedef struct AppContext_t
 
 	//D3D stuff
 	ID3D11RasterizerState	*mp3DRast;
-	ID3D11InputLayout		*mpPrimLayout;
-	ID3D11VertexShader		*mpWNormWPos;
-	ID3D11PixelShader		*mpTriSolidSpec;
 
 	//grogstuff
 	GraphicsDevice	*mpGD;
@@ -115,14 +100,8 @@ typedef struct AppContext_t
 	Clay_Vector2	mScrollDelta;
 	Clay_Vector2	mMousePos;
 
-	//skelly editor data
-	BoneDisplayData	*mpBDD;
-	bool			mbSEVisible;	//user wants to see skelly editor
-	bool			mbSEAnimating;	//stuff collapsing / growing
-
-	//skelly popout movers
-	Mover	*mpSEM;
-	Mover	*mpBoneCollapse;
+	//skelly editor
+	SkellyEditor	*mpSKE;
 
 	//projection matrices
 	mat4	mCamProj, mTextProj;
@@ -169,14 +148,12 @@ static const Image		*sCreateTexImage(const UT_string *szTex);
 static bool				sSelectPopupItem(PopUp *pPop, const char *pSZ);
 static int 				sGetSelectedIndex(const ListBox *pLB);
 static void				sDeleteListBoxItem(ListBox *pLB, int idx);
-static void				sRenderCollisionShapes(AppContext *pAC);
 static void				sSetDefaultCel(AppContext *pApp);
 static uint32_t			sSpawnReName(AppContext *pApp, V2Df pos, const char *szOld,
 							ListBox *pLB, void *pItem, ReNameFunc reName);
 //clay stuff
 static const Clay_RenderCommandArray sCreateLayout(AppContext *pApp);
 static void sHandleClayErrors(Clay_ErrorData errorData);
-static void sSetNodesAnimatingOff(BoneDisplayData *pBDD);
 
 //input event handlers
 static void	RandLightEH(void *pContext, const SDL_Event *pEvt);
@@ -197,10 +174,6 @@ static void	KeyTurnDownEH(void *pContext, const SDL_Event *pEvt);
 static void MouseMoveEH(void *pContext, const SDL_Event *pEvt);
 static void MouseWheelEH(void *pContext, const SDL_Event *pEvt);
 static void EscEH(void *pContext, const SDL_Event *pEvt);
-static void CollapseBonesEH(void *pContext, const SDL_Event *pEvt);
-static void MarkUnusedBonesEH(void *pContext, const SDL_Event *pEvt);
-static void DeleteBonesEH(void *pContext, const SDL_Event *pEvt);
-static void	SkelPopOutEH(void *pContext, const SDL_Event *pEvt);
 
 //button event handlers
 static void sLoadCharacter(AppContext *pAC, Event *pEvt);
@@ -586,10 +559,6 @@ static AppContext	*sAppCreate(void)
 	pApp->mpChar	=NULL;
 	pApp->mpStatic	=NULL;
 
-	//movers
-	pApp->mpSEM				=Mover_Create();
-	pApp->mpBoneCollapse	=Mover_Create();
-
 	//input and key / mouse bindings
 	pApp->mpInp	=INP_CreateInput();
 	SetupKeyBinds(pApp->mpInp);
@@ -622,20 +591,12 @@ static AppContext	*sAppCreate(void)
 		return	NULL;
 	}
 
-	//for prim draws
-	pApp->mpPrimLayout		=StuffKeeper_GetInputLayout(pApp->mpSK, "VPosNorm");
-	pApp->mpWNormWPos		=StuffKeeper_GetVertexShader(pApp->mpSK, "WNormWPosVS");
-	pApp->mpTriSolidSpec	=StuffKeeper_GetPixelShader(pApp->mpSK, "TriSolidSpecPS");
-
 	//manually call event to fill boxes
 	sShaderFileChanged(pApp, NULL);
 
 	//prims
 	pApp->mpLR		=CP_CreateLightRay(5.0f, 0.25f, pApp->mpGD, pApp->mpSK);
 	pApp->mpAxis	=CP_CreateAxis(5.0f, 0.1f, pApp->mpGD, pApp->mpSK);
-	pApp->mpCube	=PF_CreateCube(1.0f, false, pApp->mpGD);
-	pApp->mpSphere	=PF_CreateSphere((vec3){0,0,0}, 1.0f, pApp->mpGD);
-	pApp->mpCapsule	=PF_CreateCapsule(1.0f, 2.0f, pApp->mpGD);
 
 	pApp->mpCBK	=CBK_Create(pApp->mpGD);
 	pApp->mpPP	=PP_Create(pApp->mpGD, pApp->mpSK, pApp->mpCBK);
@@ -692,6 +653,8 @@ static AppContext	*sAppCreate(void)
 
 	Clay_SetDebugModeEnabled(true);
 
+	pApp->mpSKE	=SKE_Create(pApp->mpSK, pApp->mpGD, pApp->mpCBK, pApp->mpInp);
+
 	pApp->mbRunning	=true;
 
 	return	pApp;
@@ -704,17 +667,11 @@ static void	sAppDestroy(AppContext **ppApp)
 	printf("sAppDestroy\n");
 	sSaveWindowPositions(pAC);
 
+	SKE_Destroy(&pAC->mpSKE);
+
 	GD_Destroy(&pAC->mpGD);
 
 	window_destroy(&pAC->mpWnd);
-
-	//nuke bone display data
-	BoneDisplayData	*pCur, *pTmp;
-	HASH_ITER(hh, pAC->mpBDD, pCur, pTmp)
-	{
-		HASH_DEL(pAC->mpBDD, pCur);
-		free(pCur);
-	}
 
 	heap_delete(ppApp, AppContext);
 }
@@ -802,7 +759,7 @@ static void sRender(AppContext *pApp, const real64_t prTime, const real64_t cTim
 	}
 
 	//draw collision shapes if needed
-	sRenderCollisionShapes(pApp);
+	SKE_RenderShapes(pApp->mpSKE, pApp->mLightDir);
 
 	//set proj for 2D
 	CBK_SetProjection(pApp->mpCBK, pApp->mTextProj);
@@ -854,14 +811,7 @@ static void sAppUpdate(AppContext *pApp, const real64_t prTime, const real64_t c
 		osapp_finish();
 	}
 
-	Mover_Update(pApp->mpSEM, TIC_RATE);
-	Mover_Update(pApp->mpBoneCollapse, TIC_RATE);
-
-	if(Mover_IsDone(pApp->mpBoneCollapse))
-	{
-		pApp->mbSEAnimating	=false;
-		sSetNodesAnimatingOff(pApp->mpBDD);
-	}
+	SKE_Update(pApp->mpSKE, TIC_RATE);
 
 	pApp->mAnimTime		=cTime;
 	pApp->mDeltaYaw		=0.0f;
@@ -883,10 +833,6 @@ static void	SetupKeyBinds(Input *pInp)
 {
 	//event style bindings
 	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_l, RandLightEH);		//randomize light dir
-	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_c, CollapseBonesEH);	//collapse/uncollapse selected bones
-	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_m, MarkUnusedBonesEH);	//mark bones that aren't used in vert weights
-	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_DELETE, DeleteBonesEH);	//nuke selected bones
-	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_p, SkelPopOutEH);		//pop outsidebar
 	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_ESCAPE, EscEH);
 
 	//held bindings
@@ -1161,92 +1107,6 @@ static void	EscEH(void *pContext, const SDL_Event *pEvt)
 	pTS->mbRunning	=false;
 }
 
-static void CollapseBonesEH(void *pContext, const SDL_Event *pEvt)
-{
-	AppContext	*pTS	=(AppContext *)pContext;
-
-	assert(pTS);
-
-	if(pTS->mbSEAnimating)
-	{
-		return;
-	}
-
-	BoneDisplayData	*pBDD;
-
-	//toggle collapse on selected and deselect
-	for(pBDD=pTS->mpBDD;pBDD != NULL;pBDD=pBDD->hh.next)
-	{
-		if(pBDD->mbSelected)
-		{
-			pBDD->mbSelected	=false;
-			pBDD->mbCollapsed	=!pBDD->mbCollapsed;
-			pBDD->mbAnimating	=true;
-		}
-	}
-
-	Mover_SetUpMove(pTS->mpBoneCollapse,
-		(vec4){BONE_VERTICAL_SIZE,0,0,0}, (vec4){0,0,0,0},
-		COLLAPSE_INTERVAL, 0.2f, 0.2f);
-
-	pTS->mbSEAnimating	=true;
-}
-
-static void MarkUnusedBonesEH(void *pContext, const SDL_Event *pEvt)
-{
-	AppContext	*pTS	=(AppContext *)pContext;
-
-	assert(pTS);
-}
-
-static void DeleteBonesEH(void *pContext, const SDL_Event *pEvt)
-{
-	AppContext	*pTS	=(AppContext *)pContext;
-
-	assert(pTS);
-}
-
-static void SkelPopOutEH(void *pContext, const SDL_Event *pEvt)
-{
-	AppContext	*pTS	=(AppContext *)pContext;
-
-	assert(pTS);
-
-	vec4	startPos	={0};
-	vec4	endPos		={0};
-
-	endPos[0]	=300;
-
-	vec4	mvPos;
-	Mover_GetPos(pTS->mpSEM, mvPos);
-
-	if(mvPos[0] > 0.0f)
-	{
-		if(pTS->mbSEVisible)
-		{
-			//closing from partway open
-			Mover_SetUpMove(pTS->mpSEM, mvPos, startPos,
-				COLLAPSE_INTERVAL / 2.0f, 0.2f, 0.2f);
-		}
-		else
-		{
-			//opening from partway closed
-			Mover_SetUpMove(pTS->mpSEM, mvPos, endPos,
-				COLLAPSE_INTERVAL / 2.0f, 0.2f, 0.2f);
-		}
-	}
-	else
-	{
-		if(!pTS->mbSEVisible)
-		{
-			Mover_SetUpMove(pTS->mpSEM, startPos, endPos,
-				COLLAPSE_INTERVAL, 0.2f, 0.2f);
-		}
-	}
-
-	pTS->mbSEVisible	=!pTS->mbSEVisible;
-}
-
 
 static void sLoadCharacter(AppContext *pAC, Event *pEvt)
 {
@@ -1269,6 +1129,9 @@ static void sLoadCharacter(AppContext *pAC, Event *pEvt)
 	}
 
 	pAC->mpChar	=Character_Read(pFileName);
+
+	//pass along to skelly editor
+	SKE_SetCharacter(pAC->mpSKE, pAC->mpChar);
 
 	printf("Character loaded...\n");
 
@@ -1543,6 +1406,9 @@ static void sLoadAnimLib(AppContext *pAC, Event *pEvt)
 	printf("AnimLib load fileName: %s\n", pFileName);
 
 	pAC->mpALib	=AnimLib_Read(pFileName);
+
+	//pass along to skelly editor
+	SKE_SetAnimLib(pAC->mpSKE, pAC->mpALib);
 
 	pAC->mpAnimList	=AnimLib_GetAnimList(pAC->mpALib);
 
@@ -2373,459 +2239,12 @@ static void	sSetDefaultCel(AppContext *pApp)
 }
 
 
-static void sOnHoverBone(Clay_ElementId eID, Clay_PointerData pnt, intptr_t userData)
-{
-	//clicked?
-	if(pnt.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME)
-	{
-		printf("Click! %s\n", eID.stringId.chars);
-
-		AppContext	*pApp	=(AppContext *)userData;
-		if(pApp == NULL)
-		{
-			return;
-		}
-		if(pApp->mpALib == NULL)
-		{
-			return;
-		}
-
-		const Skeleton	*pSkel	=AnimLib_GetSkeleton(pApp->mpALib);
-		if(pSkel == NULL)
-		{
-			return;
-		}
-
-		const GSNode	*pBone	=Skeleton_GetConstBoneByName(pSkel, eID.stringId.chars);
-		if(pBone == NULL)
-		{
-			return;
-		}
-
-		BoneDisplayData	*pBDD;
-
-		//see if bone data already exists
-		HASH_FIND_PTR(pApp->mpBDD, &pBone, pBDD);
-		if(pBDD == NULL)
-		{
-			pBDD	=malloc(sizeof(BoneDisplayData));
-			memset(pBDD, 0, sizeof(BoneDisplayData));
-
-			pBDD->mpNode	=pBone;
-
-			HASH_ADD_PTR(pApp->mpBDD, mpNode, pBDD);
-		}
-
-		//toggle selected
-		pBDD->mbSelected	=!pBDD->mbSelected;
-	}
-}
-
-static void sSetNodesAnimatingOff(BoneDisplayData *pBDD)
-{
-	BoneDisplayData	*pCur;
-
-	//toggle collapse on selected and deselect
-	for(pCur=pBDD;pCur != NULL;pCur=pCur->hh.next)
-	{
-		pCur->mbAnimating	=false;
-	}
-}
-
-static bool sIsAnyNodeSelected(BoneDisplayData *pBDD)
-{
-	BoneDisplayData	*pCur;
-
-	for(pCur=pBDD;pCur != NULL;pCur=pCur->hh.next)
-	{
-		if(pCur->mbSelected)
-		{
-			return	true;
-		}
-	}
-	return	false;
-}
-
-static bool	sIsSelected(const BoneDisplayData *pBDD, const GSNode *pNode)
-{
-	BoneDisplayData	*pFound;
-
-	HASH_FIND_PTR(pBDD, &pNode, pFound);
-	if(pFound == NULL)
-	{
-		return	false;
-	}
-	return	pFound->mbSelected;
-}
-
-static bool	sIsCollapsed(const BoneDisplayData *pBDD, const GSNode *pNode)
-{
-	BoneDisplayData	*pFound;
-
-	HASH_FIND_PTR(pBDD, &pNode, pFound);
-	if(pFound == NULL)
-	{
-		return	false;
-	}
-	return	pFound->mbCollapsed;
-}
-
-static bool	sIsAnimating(const BoneDisplayData *pBDD, const GSNode *pNode)
-{
-	BoneDisplayData	*pFound;
-
-	HASH_FIND_PTR(pBDD, &pNode, pFound);
-	if(pFound == NULL)
-	{
-		return	false;
-	}
-	return	pFound->mbAnimating;
-}
-
-static void sRenderNodeCollisionShape(AppContext *pAC, const GSNode *pNode)
-{
-	if(pAC->mpChar == NULL)
-	{
-		return;
-	}
-
-	const Skin		*pSkin	=Character_GetSkin(pAC->mpChar);
-	const Skeleton	*pSkel	=AnimLib_GetSkeleton(pAC->mpALib);
-
-	int	choice	=Skin_GetBoundChoice(pSkin, pNode->mIndex);
-
-	vec4	capSize;
-	Skin_GetBoundSize(pSkin, pNode->mIndex, capSize);
-
-	mat4	boneMat;
-	Skin_GetBoneByIndexNoBind(pSkin, pSkel, pNode->mIndex, boneMat);
-
-	GD_IASetVertexBuffers(pAC->mpGD, pAC->mpSphere->mpVB, pAC->mpSphere->mVertSize, 0);
-	GD_IASetIndexBuffers(pAC->mpGD, pAC->mpSphere->mpIB, DXGI_FORMAT_R16_UINT, 0);
-	GD_VSSetShader(pAC->mpGD, pAC->mpWNormWPos);
-	GD_PSSetShader(pAC->mpGD, pAC->mpTriSolidSpec);
-	GD_IASetInputLayout(pAC->mpGD, pAC->mpPrimLayout);
-
-	//materialish stuff
-	CBK_SetSolidColour(pAC->mpCBK, (vec4){1,1,1,1});
-
-	vec3	lightColour0	={	1,		1,		1		};
-	vec3	lightColour1	={	0.8f,	0.8f,	0.8f	};
-	vec3	lightColour2	={	0.6f,	0.6f,	0.6f	};
-	vec3	specColour		={	1,		1,		1		};
-	vec3	localScale		={	capSize[3],	capSize[3],	capSize[3]	};
-
-	CBK_SetLocalScale(pAC->mpCBK, localScale);
-
-	CBK_SetTrilights3(pAC->mpCBK, lightColour0, lightColour1, lightColour2, pAC->mLightDir);
-	CBK_SetSpecular(pAC->mpCBK, specColour, 1.0f);
-
-	CBK_SetWorldMat(pAC->mpCBK, boneMat);
-	CBK_UpdateObject(pAC->mpCBK, pAC->mpGD);
-
-	GD_DrawIndexed(pAC->mpGD, pAC->mpSphere->mIndexCount, 0, 0);
-}
-
-static void	sRenderCollisionShapes(AppContext *pAC)
-{
-	if(pAC->mpChar == NULL)
-	{
-		return;
-	}
-	if(pAC->mpALib == NULL)
-	{
-		return;
-	}
-
-	const Skin		*pSkin	=Character_GetSkin(pAC->mpChar);
-	const Skeleton	*pSkel	=AnimLib_GetSkeleton(pAC->mpALib);
-
-	BoneDisplayData	*pCur;
-	GSNode			*pNode;
-
-	int	numSelected	=0;
-	for(pCur=pAC->mpBDD;pCur != NULL;pCur=pCur->hh.next)
-	{
-		if(pCur->mbSelected)
-		{
-			sRenderNodeCollisionShape(pAC, pCur->mpNode);
-			numSelected++;
-		}
-	}
-
-	if(numSelected <= 0)
-	{
-		return;
-	}
-}
-
-static char	sShapeNames[4][8]	={	{"Box"}, {"Sphere"}, {"Capsule"}, {"Invalid"}	};
-static char	sInfoText[256];
-
-//figure out what should go in the info box based
-//on which nodes are selected
-static void	sMakeInfoString(const BoneDisplayData *pBDD, const Character *pChr)
-{
-	const GSNode	*pNode;
-
-	int	numSelected	=0;
-	for(const BoneDisplayData *pCur=pBDD;pCur != NULL;pCur=pCur->hh.next)
-	{
-		if(pCur->mbSelected)
-		{
-			numSelected++;
-			pNode	=pCur->mpNode;
-		}
-	}
-
-	if(numSelected <= 0)
-	{
-		return;
-	}
-
-	if(numSelected > 1)
-	{
-		sprintf(sInfoText, "Multiple bones selected.  Use C to collapse/expand bones, or Del to delete.");
-		return;
-	}
-
-	if(pChr == NULL)
-	{
-		sprintf(sInfoText, "Bone %s of index %d selected.  Load a character for collision info.",
-			utstring_body(pNode->szName), pNode->mIndex);
-		return;
-	}
-
-	const Skin	*pSkin	=Character_GetSkin(pChr);
-
-	int	choice	=Skin_GetBoundChoice(pSkin, pNode->mIndex);
-
-	sprintf(sInfoText, "Bone %s of index %d using collision shape %s",
-		utstring_body(pNode->szName), pNode->mIndex, sShapeNames[choice]);
-}
-
-
-#define	NOT_COLLAPSING	0
-#define	GROWING			1
-#define	COLLAPSING		2
-
-//dive thru the bone tree to make clay stuffs
-static void sSkeletonLayout(const GSNode *pNode, AppContext *pAC, int colState)
-{
-	if(pNode == NULL)
-	{
-		return;
-	}
-
-	Clay_String	csNode;
-
-	csNode.chars	=utstring_body(pNode->szName);
-	csNode.length	=utstring_len(pNode->szName);
-
-	//create a big encompassing box that contains
-	//all child nodes too, will this work with no ID?
-	Clay__OpenElement();
-
-	Clay_ElementDeclaration	ced	={	.layout = { .childGap = 4,
-		.padding = { 16, 0, 0, 0}, .layoutDirection = CLAY_TOP_TO_BOTTOM,
-		.sizing = { .width = CLAY_SIZING_FIT(0), .height = CLAY_SIZING_FIT(0) }},
-		.backgroundColor ={10, 221, 25, 45}	};
-
-	Clay__ConfigureOpenElement(ced);
-
-	//see if selected
-	bool	bSelected	=sIsSelected(pAC->mpBDD, pNode);
-
-	//see if collapsed, if so recurse no further and add a +
-	bool	bCollapsed	=sIsCollapsed(pAC->mpBDD, pNode);
-
-	//see if animating (opening or closing)
-	bool	bAnimating	=sIsAnimating(pAC->mpBDD, pNode);
-
-	//see if bone has any children
-	bool	bHasKids	=(pNode->mNumChildren > 0);
-
-	//this is a 0 to BONE_VERTICAL_SIZE amount
-	vec4	colAmount;
-	Mover_GetPos(pAC->mpBoneCollapse, colAmount);
-
-	//width is always fit
-	Clay_Sizing	cs;
-	cs.width	=CLAY_SIZING_FIT(0);
-
-	//height is either fit or semi squished if animating
-	//TODO: maybe hide text while squishing?  It gets all goofy
-	if(colState == NOT_COLLAPSING)
-	{
-		cs.height	=CLAY_SIZING_FIT(0);
-	}
-	else if(colState == GROWING)
-	{
-		cs.height	=CLAY_SIZING_FIXED(BONE_VERTICAL_SIZE - colAmount[0]);
-	}
-	else
-	{
-		cs.height	=CLAY_SIZING_FIXED(colAmount[0]);
-	}
-
-	//create an inner rect sized for the text
-	Clay__OpenElement();
-
-	//this one will have the bone name as an ID
-	Clay__AttachId(Clay__HashString(csNode, 0, 0));
-
-	Clay_ElementDeclaration	ced2	={	.layout = { .childGap = 4,
-		.padding = { 8, 8, 2, 2 },	.sizing = cs},
-		.cornerRadius = { 6 }, .backgroundColor = bSelected?
-			COLOR_GOLD : (Clay_Hovered()? COLOR_ORANGE : COLOR_BLUE) };
-	
-	//is this where this goes?
-	Clay_OnHover(sOnHoverBone, (intptr_t)pAC);
-
-	Clay__ConfigureOpenElement(ced2);
-	
-	//keep the passed in state
-	int	childColState	=colState;
-	if(bHasKids)
-	{
-		if(bCollapsed)
-		{
-			CLAY_TEXT(CLAY_STRING("+"), CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 0, 0, 255} }));
-			if(bAnimating)
-			{
-				//if this node is collapsing, squish child nodes
-				childColState	=COLLAPSING;
-			}
-		}
-		else
-		{
-			CLAY_TEXT(CLAY_STRING("-"), CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 0, 0, 255} }));
-			if(bAnimating)
-			{
-				//if this node is animating, grow child nodes
-				childColState	=GROWING;
-			}
-		}
-	}
-	CLAY_TEXT(csNode, CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 0, 0, 255} })),
-
-	//this closes the inner text nubbins
-	Clay__CloseElement();
-
-	//see if collapsed, if so recurse no further
-	if(bCollapsed && !bAnimating)
-	{
-		//don't recurse (already closed nodes)
-	}
-	else if(!bCollapsed || pAC->mbSEAnimating)
-	{
-		//children should parent off the big rect
-		for(int i=0;i < pNode->mNumChildren;i++)
-		{
-			sSkeletonLayout(pNode->mpChildren[i], pAC, childColState);
-		}
-	}
-
-	//close big outer rect
-	Clay__CloseElement();
-}
-
-
 //for in render window UI
 static Clay_RenderCommandArray sCreateLayout(AppContext *pApp)
 {
 	Clay_BeginLayout();
-
-	//want a button to close open maybe
-/*	CLAY(CLAY_ID("SkelPopoutButton"),
-		CLAY_LAYOUT({ .sizing = { .width = CLAY_SIZING_FIXED(10), .height = CLAY_SIZING_FIXED(30) }, .padding = { 4, 4, 4, 4 }}),
-		CLAY_FLOATING({ .zIndex = 1, .attachment = { CLAY_ATTACH_POINT_CENTER_TOP, CLAY_ATTACH_POINT_CENTER_TOP }, .offset = {0, 0} }),
-		CLAY_BORDER_OUTSIDE({ .color = {80, 80, 80, 255}, .width = 2 }),
-		CLAY_RECTANGLE({ .color = {140,80, 200, 200 }}))
-		{
-			CLAY_TEXT(CLAY_STRING("I'm an inline floating container."), CLAY_TEXT_CONFIG({ .fontSize = 24, .textColor = {255,255,255,255} }));
-		}*/
-	vec4	mvPos, bcPos;
-	Mover_GetPos(pApp->mpSEM, mvPos);
-	Mover_GetPos(pApp->mpBoneCollapse, bcPos);
-
-	if(mvPos[0] > 0.0f)
-	{
-		Clay__OpenElement();
-		CLAY_ID("SideBar");
-
-		Clay_ElementDeclaration	cedSB	={	.layout = {
-			.childAlignment = { .x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP},
-			.layoutDirection = CLAY_TOP_TO_BOTTOM,
-			.sizing = { .width = CLAY_SIZING_FIXED(mvPos[0]),
-			.height = CLAY_SIZING_FIT(0) },
-//			.padding = {16, 16, 16, 16 },
-//			.childGap = 16
-			}, .backgroundColor = {150, 150, 155, 55}
-		};
-
-		Clay__ConfigureOpenElement(cedSB);
-
-		Clay__OpenElement();
-		CLAY_ID("SkellyEditor");
-
-		Clay_ElementDeclaration	cedSE	={	.layout = {
-			.childAlignment = { .x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP},
-			.layoutDirection = CLAY_TOP_TO_BOTTOM,
-			.sizing = { .width = CLAY_SIZING_FIXED(mvPos[0]),
-			.height = CLAY_SIZING_FIT(0) }
-			}, .scroll = { .horizontal = true, .vertical = true }
-		};
-		Clay__ConfigureOpenElement(cedSE);
-
-		if(pApp->mpALib != NULL)
-		{
-			const Skeleton	*pSkel	=AnimLib_GetSkeleton(pApp->mpALib);
-			if(pSkel != NULL)
-			{
-				for(int i=0;i < pSkel->mNumRoots;i++)
-				{
-					sSkeletonLayout(pSkel->mpRoots[i], pApp, NOT_COLLAPSING);
-				}
-			}
-			else
-			{
-				CLAY_TEXT(CLAY_STRING("No Skeleton Loaded!"), CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 70, 70, 155} }));
-			}
-		}
-		else
-		{
-			CLAY_TEXT(CLAY_STRING("No Skeleton Loaded!"), CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 70, 70, 155} }));
-		}
-		Clay__CloseElement();	//skelly editor
-
-		if(sIsAnyNodeSelected(pApp->mpBDD))
-		{
-			//create a bottom section for info
-			sMakeInfoString(pApp->mpBDD, pApp->mpChar);
-			Clay_String	csInfo;
-
-			csInfo.chars	=sInfoText;
-			csInfo.length	=strlen(sInfoText);
-
-			CLAY({ .id = CLAY_ID("SkellyInfoBox"),
-				.layout = {
-					.childAlignment = { .x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_CENTER },
-					.layoutDirection = CLAY_TOP_TO_BOTTOM,
-					.sizing = { .width = CLAY_SIZING_FIXED(mvPos[0]),
-						.height = CLAY_SIZING_FIT(0)
-					},
-					.padding = {16, 16, 16, 16 },
-					.childGap = 16
-				},
-				.border = { .color = {80, 80, 80, 255}, .width = 2 },
-				.backgroundColor =  {150, 150, 155, 55}})
-			{
-				CLAY_TEXT(csInfo, CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 70, 70, 155} }));
-			}
-		}
-		Clay__CloseElement();	//sidebar
-	}
+	
+	SKE_MakeClayLayout(pApp->mpSKE);
 
 	return Clay_EndLayout();
 }
