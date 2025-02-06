@@ -14,9 +14,11 @@
 #include	"MeshLib/Skin.h"
 #include	"InputLib/Input.h"
 
+
 #define	NOT_COLLAPSING		0
 #define	GROWING				1
 #define	COLLAPSING			2
+#define	INFO_BUF_SIZE		1024
 #define	BONE_VERTICAL_SIZE	30
 #define	COLLAPSE_INTERVAL	(0.25f)
 
@@ -27,7 +29,7 @@
 
 //static data for making text
 static char	sShapeNames[4][8]	={	{"Box"}, {"Sphere"}, {"Capsule"}, {"Invalid"}	};
-static char	sInfoText[256];
+static char	sInfoText[INFO_BUF_SIZE];
 
 //little hashy struct for tracking bone display data
 typedef struct	BoneDisplayData_t
@@ -70,8 +72,10 @@ typedef struct	SkellyEditor_t
 
 	//skelly editor data
 	BoneDisplayData	*mpBDD;
-	bool			mbSEVisible;	//user wants to see skelly editor
-	bool			mbSEAnimating;	//stuff collapsing / growing
+	bool			mbSEVisible;		//user wants to see skelly editor
+	bool			mbSEAnimating;		//stuff collapsing / growing
+	bool			mbAdjustingMode;	//single bone shape adjust
+	int				mAdjustingIndex;	//index of bone being changed
 
 	//skelly popout movers
 	Mover	*mpSEM;
@@ -83,15 +87,29 @@ typedef struct	SkellyEditor_t
 static void sSetNodesAnimatingOff(BoneDisplayData *pBDD);
 static void sSkeletonLayout(const GSNode *pNode, SkellyEditor *pSKE, int colState);
 static bool sIsAnyNodeSelected(BoneDisplayData *pBDD);
-static void	sMakeInfoString(const BoneDisplayData *pBDD, const Character *pChr);
+static void	sMakeInfoString(const SkellyEditor *pSKE);
 static void sRenderNodeCollisionShape(const SkellyEditor *pSKE,
-				const GSNode *pNode, const vec3 lightDir);
+				int nodeIndex, const vec3 lightDir, const vec4 colour);
 
 //input event handlers
 static void CollapseBonesEH(void *pContext, const SDL_Event *pEvt);
 static void MarkUnusedBonesEH(void *pContext, const SDL_Event *pEvt);
 static void DeleteBonesEH(void *pContext, const SDL_Event *pEvt);
 static void	SkelPopOutEH(void *pContext, const SDL_Event *pEvt);
+static void	AdjustBoneBoundEH(void *pContext, const SDL_Event *pEvt);
+static void	BoxWidthIncreaseEH(void *pContext, const SDL_Event *pEvt);
+static void	BoxWidthDecreaseEH(void *pContext, const SDL_Event *pEvt);
+static void	LengthIncreaseEH(void *pContext, const SDL_Event *pEvt);
+static void	LengthDecreaseEH(void *pContext, const SDL_Event *pEvt);
+static void	BoxDepthIncreaseEH(void *pContext, const SDL_Event *pEvt);
+static void	BoxDepthDecreaseEH(void *pContext, const SDL_Event *pEvt);
+static void	SphereRadiusIncreaseEH(void *pContext, const SDL_Event *pEvt);
+static void	SphereRadiusDecreaseEH(void *pContext, const SDL_Event *pEvt);
+static void	SnapToJointEH(void *pContext, const SDL_Event *pEvt);
+static void	MirrorEH(void *pContext, const SDL_Event *pEvt);
+static void	MoveForwardEH(void *pContext, const SDL_Event *pEvt);
+static void	MoveBackwardEH(void *pContext, const SDL_Event *pEvt);
+static void	ChangeShapeEH(void *pContext, const SDL_Event *pEvt);
 
 
 SkellyEditor	*SKE_Create(StuffKeeper *pSK, GraphicsDevice *pGD,
@@ -121,9 +139,23 @@ SkellyEditor	*SKE_Create(StuffKeeper *pSK, GraphicsDevice *pGD,
 
 	//input handlers
 	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_c, CollapseBonesEH, pRet);	//collapse/uncollapse selected bones
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_m, MarkUnusedBonesEH, pRet);	//mark bones that aren't used in vert weights
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_n, MarkUnusedBonesEH, pRet);	//mark bones that aren't used in vert weights
 	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_DELETE, DeleteBonesEH, pRet);	//nuke selected bones
 	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_p, SkelPopOutEH, pRet);		//pop outsidebar
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_BACKSLASH, AdjustBoneBoundEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_y, BoxWidthIncreaseEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_u, BoxWidthDecreaseEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_i, LengthIncreaseEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_o, LengthDecreaseEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_LEFTBRACKET, BoxDepthIncreaseEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_RIGHTBRACKET, BoxDepthDecreaseEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_g, SphereRadiusIncreaseEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_h, SphereRadiusDecreaseEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_j, SnapToJointEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_m, MirrorEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_v, MoveForwardEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_b, MoveBackwardEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_COMMA, ChangeShapeEH, pRet);
 
 	return	pRet;
 }
@@ -170,9 +202,6 @@ void	SKE_SetCharacter(SkellyEditor *pSKE, Character *pChar)
 
 void	SKE_RenderShapes(SkellyEditor *pSKE, const vec3 lightDir)
 {
-//	const Skin		*pSkin	=Character_GetSkin(pSKE->mpChar);
-//	const Skeleton	*pSkel	=AnimLib_GetSkeleton(pSKE->mpALib);
-
 	BoneDisplayData	*pCur;
 //	GSNode			*pNode;
 
@@ -181,14 +210,32 @@ void	SKE_RenderShapes(SkellyEditor *pSKE, const vec3 lightDir)
 	{
 		if(pCur->mbSelected)
 		{
-			sRenderNodeCollisionShape(pSKE, pCur->mpNode, lightDir);
 			numSelected++;
+
+			if(pSKE->mbAdjustingMode && pCur->mpNode->mIndex == pSKE->mAdjustingIndex)
+			{
+				continue;
+			}
+
+			sRenderNodeCollisionShape(pSKE, pCur->mpNode->mIndex,
+				lightDir, (vec4){1,1,1,1});
 		}
 	}
 
 	if(numSelected <= 0)
 	{
 		return;
+	}
+	if(pSKE->mpChar == NULL)
+	{
+		return;
+	}
+
+	//do adjusting bone if needed
+	if(pSKE->mbAdjustingMode)
+	{
+		sRenderNodeCollisionShape(pSKE, pSKE->mAdjustingIndex,
+			lightDir, (vec4){1,0.6f,0,1});
 	}
 }
 
@@ -251,7 +298,7 @@ void	SKE_MakeClayLayout(SkellyEditor *pSKE)
 		if(sIsAnyNodeSelected(pSKE->mpBDD))
 		{
 			//create a bottom section for info
-			sMakeInfoString(pSKE->mpBDD, pSKE->mpChar);
+			sMakeInfoString(pSKE);
 			Clay_String	csInfo;
 
 			csInfo.chars	=sInfoText;
@@ -292,6 +339,10 @@ static void sOnHoverBone(Clay_ElementId eID, Clay_PointerData pnt, intptr_t user
 			return;
 		}
 		if(pSKE->mpALib == NULL)
+		{
+			return;
+		}
+		if(pSKE->mbAdjustingMode)
 		{
 			return;
 		}
@@ -352,6 +403,28 @@ static bool sIsAnyNodeSelected(BoneDisplayData *pBDD)
 	return	false;
 }
 
+//return -1 if more or less than 1 selected
+static int	sGetSingleNodeSelected(BoneDisplayData *pBDD)
+{
+	int	ret			=-1;
+	int	numSelected	=0;
+	for(const BoneDisplayData *pCur=pBDD;pCur != NULL;pCur=pCur->hh.next)
+	{
+		if(pCur->mbSelected)
+		{
+			numSelected++;
+			ret	=pCur->mpNode->mIndex;
+		}
+	}
+
+	if(numSelected == 1)
+	{
+		return	ret;
+	}
+
+	return	-1;
+}
+
 static bool	sIsSelected(const BoneDisplayData *pBDD, const GSNode *pNode)
 {
 	BoneDisplayData	*pFound;
@@ -389,23 +462,23 @@ static bool	sIsAnimating(const BoneDisplayData *pBDD, const GSNode *pNode)
 }
 
 static void sRenderNodeCollisionShape(const SkellyEditor *pSKE,
-	const GSNode *pNode, const vec3 lightDir)
+	int nodeIndex, const vec3 lightDir, const vec4 colour)
 {
 	if(pSKE->mpChar == NULL)
 	{
 		return;
 	}
 
-	const Skin		*pSkin	=Character_GetSkin(pSKE->mpChar);
+	const Skin		*pSkin	=Character_GetConstSkin(pSKE->mpChar);
 	const Skeleton	*pSkel	=AnimLib_GetSkeleton(pSKE->mpALib);
 
-	int	choice	=Skin_GetBoundChoice(pSkin, pNode->mIndex);
+	int	choice	=Skin_GetBoundChoice(pSkin, nodeIndex);
 
 	vec4	capSize;
-	Skin_GetBoundSize(pSkin, pNode->mIndex, capSize);
+	Skin_GetBoundSize(pSkin, nodeIndex, capSize);
 
 	mat4	boneMat;
-	Skin_GetBoneByIndexNoBind(pSkin, pSkel, pNode->mIndex, boneMat);
+	Skin_GetBoneByIndexNoBind(pSkin, pSkel, nodeIndex, boneMat);
 
 	GD_IASetVertexBuffers(pSKE->mpGD, pSKE->mpSphere->mpVB, pSKE->mpSphere->mVertSize, 0);
 	GD_IASetIndexBuffers(pSKE->mpGD, pSKE->mpSphere->mpIB, DXGI_FORMAT_R16_UINT, 0);
@@ -414,7 +487,7 @@ static void sRenderNodeCollisionShape(const SkellyEditor *pSKE,
 	GD_IASetInputLayout(pSKE->mpGD, pSKE->mpPrimLayout);
 
 	//materialish stuff
-	CBK_SetSolidColour(pSKE->mpCBK, (vec4){1,1,1,1});
+	CBK_SetSolidColour(pSKE->mpCBK, colour);
 
 	vec3	lightColour0	={	1,		1,		1		};
 	vec3	lightColour1	={	0.8f,	0.8f,	0.8f	};
@@ -435,12 +508,12 @@ static void sRenderNodeCollisionShape(const SkellyEditor *pSKE,
 
 //figure out what should go in the info box based
 //on which nodes are selected
-static void	sMakeInfoString(const BoneDisplayData *pBDD, const Character *pChr)
+static void	sMakeInfoString(const SkellyEditor *pSKE)
 {
 	const GSNode	*pNode;
 
 	int	numSelected	=0;
-	for(const BoneDisplayData *pCur=pBDD;pCur != NULL;pCur=pCur->hh.next)
+	for(const BoneDisplayData *pCur=pSKE->mpBDD;pCur != NULL;pCur=pCur->hh.next)
 	{
 		if(pCur->mbSelected)
 		{
@@ -456,23 +529,49 @@ static void	sMakeInfoString(const BoneDisplayData *pBDD, const Character *pChr)
 
 	if(numSelected > 1)
 	{
-		sprintf(sInfoText, "Multiple bones selected.  Use C to collapse/expand bones, or Del to delete.");
+		sprintf(sInfoText, "Multiple bones selected.  Use C to collapse/expand bones, m to mirror selected, n to mark unused bones, or Del to delete.");
 		return;
 	}
 
-	if(pChr == NULL)
+	if(pSKE->mpChar == NULL)
 	{
 		sprintf(sInfoText, "Bone %s of index %d selected.  Load a character for collision info.",
 			utstring_body(pNode->szName), pNode->mIndex);
 		return;
 	}
 
-	const Skin	*pSkin	=Character_GetSkin(pChr);
+	const Skin	*pSkin	=Character_GetConstSkin(pSKE->mpChar);
 
 	int	choice	=Skin_GetBoundChoice(pSkin, pNode->mIndex);
 
-	sprintf(sInfoText, "Bone %s of index %d using collision shape %s",
-		utstring_body(pNode->szName), pNode->mIndex, sShapeNames[choice]);
+	if(pSKE->mbAdjustingMode)
+	{
+		if(choice == BONE_COL_SHAPE_BOX)
+		{
+			sprintf(sInfoText, "Adjusting bound of %s.  Keys y/u width, i/o length, [] depth, j to snap to joint, v/b to move, or \\ again to finish editing.",
+				utstring_body(pNode->szName));
+		}
+		else if(choice == BONE_COL_SHAPE_SPHERE)
+		{
+			sprintf(sInfoText, "Adjusting bound of %s.  Keys g/h radius, j to snap to joint, v/b to move, or \\ again to finish editing.",
+				utstring_body(pNode->szName));
+		}
+		else if(choice == BONE_COL_SHAPE_CAPSULE)
+		{
+			sprintf(sInfoText, "Adjusting bound of %s.  Keys i/o length, g/h radius, j to snap to joint, v/b to move, or \\ again to finish editing.",
+				utstring_body(pNode->szName));
+		}
+		else
+		{
+			sprintf(sInfoText, "Invalid bound chosen for %s.  Press \\ again to finish editing.",
+				utstring_body(pNode->szName));
+		}
+	}
+	else
+	{
+		sprintf(sInfoText, "Bone %s of index %d using shape %s.  Press \\ to begin adjusting, or , to change shape.",
+			utstring_body(pNode->szName), pNode->mIndex, sShapeNames[choice]);
+	}
 }
 
 
@@ -604,6 +703,10 @@ static void CollapseBonesEH(void *pContext, const SDL_Event *pEvt)
 	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
 	assert(pSKE);
 
+	if(pSKE->mbAdjustingMode)
+	{
+		return;
+	}
 	if(pSKE->mbSEAnimating)
 	{
 		return;
@@ -633,12 +736,22 @@ static void MarkUnusedBonesEH(void *pContext, const SDL_Event *pEvt)
 {
 	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
 	assert(pSKE);
+
+	if(pSKE->mbAdjustingMode)
+	{
+		return;
+	}
 }
 
 static void DeleteBonesEH(void *pContext, const SDL_Event *pEvt)
 {
 	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
 	assert(pSKE);
+
+	if(pSKE->mbAdjustingMode)
+	{
+		return;
+	}
 }
 
 static void SkelPopOutEH(void *pContext, const SDL_Event *pEvt)
@@ -679,4 +792,209 @@ static void SkelPopOutEH(void *pContext, const SDL_Event *pEvt)
 	}
 
 	pSKE->mbSEVisible	=!pSKE->mbSEVisible;
+}
+
+static void	AdjustBoneBoundEH(void *pContext, const SDL_Event *pEvt)
+{
+	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
+	assert(pSKE);
+
+	int	sel	=sGetSingleNodeSelected(pSKE->mpBDD);
+	if(sel == -1)
+	{
+		return;
+	}
+
+	//toggle
+	pSKE->mbAdjustingMode	=!pSKE->mbAdjustingMode;
+
+	if(pSKE->mbAdjustingMode)
+	{
+		pSKE->mAdjustingIndex	=sel;
+	}
+	else
+	{
+		pSKE->mAdjustingIndex	=-1;
+	}
+}
+
+static void	BoxWidthIncreaseEH(void *pContext, const SDL_Event *pEvt)
+{
+	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
+	assert(pSKE);
+
+	if(!pSKE->mbAdjustingMode)
+	{
+		return;
+	}
+}
+
+static void	BoxWidthDecreaseEH(void *pContext, const SDL_Event *pEvt)
+{
+	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
+	assert(pSKE);
+
+	if(!pSKE->mbAdjustingMode)
+	{
+		return;
+	}
+}
+
+static void	LengthIncreaseEH(void *pContext, const SDL_Event *pEvt)
+{
+	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
+	assert(pSKE);
+
+	if(!pSKE->mbAdjustingMode)
+	{
+		return;
+	}
+}
+
+static void	LengthDecreaseEH(void *pContext, const SDL_Event *pEvt)
+{
+	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
+	assert(pSKE);
+
+	if(!pSKE->mbAdjustingMode)
+	{
+		return;
+	}
+}
+
+static void	BoxDepthIncreaseEH(void *pContext, const SDL_Event *pEvt)
+{
+	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
+	assert(pSKE);
+
+	if(!pSKE->mbAdjustingMode)
+	{
+		return;
+	}
+}
+
+static void	BoxDepthDecreaseEH(void *pContext, const SDL_Event *pEvt)
+{
+	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
+	assert(pSKE);
+
+	if(!pSKE->mbAdjustingMode)
+	{
+		return;
+	}
+}
+
+static void	SphereRadiusIncreaseEH(void *pContext, const SDL_Event *pEvt)
+{
+	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
+	assert(pSKE);
+
+	if(!pSKE->mbAdjustingMode)
+	{
+		return;
+	}
+}
+
+static void	SphereRadiusDecreaseEH(void *pContext, const SDL_Event *pEvt)
+{
+	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
+	assert(pSKE);
+
+	if(!pSKE->mbAdjustingMode)
+	{
+		return;
+	}
+}
+
+static void	SnapToJointEH(void *pContext, const SDL_Event *pEvt)
+{
+	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
+	assert(pSKE);
+
+	if(!pSKE->mbAdjustingMode)
+	{
+		return;
+	}
+}
+
+static void	MirrorEH(void *pContext, const SDL_Event *pEvt)
+{
+	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
+	assert(pSKE);
+
+	if(pSKE->mbAdjustingMode)
+	{
+		return;
+	}
+}
+
+static void	MoveForwardEH(void *pContext, const SDL_Event *pEvt)
+{
+	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
+	assert(pSKE);
+
+	if(!pSKE->mbAdjustingMode)
+	{
+		return;
+	}
+}
+
+static void	MoveBackwardEH(void *pContext, const SDL_Event *pEvt)
+{
+	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
+	assert(pSKE);
+
+	if(!pSKE->mbAdjustingMode)
+	{
+		return;
+	}
+}
+
+static void	ChangeShapeEH(void *pContext, const SDL_Event *pEvt)
+{
+	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
+	assert(pSKE);
+
+	if(pSKE->mbAdjustingMode)
+	{
+		return;
+	}
+
+	const GSNode	*pNode		=NULL;
+	int		numSelected	=0;
+	for(const BoneDisplayData *pCur=pSKE->mpBDD;pCur != NULL;pCur=pCur->hh.next)
+	{
+		if(pCur->mbSelected)
+		{
+			numSelected++;
+			pNode	=pCur->mpNode;
+		}
+	}
+
+	if(numSelected <= 0)
+	{
+		return;
+	}
+
+	if(numSelected > 1)
+	{
+		return;
+	}
+
+	Skin	*pSkin	=Character_GetSkin(pSKE->mpChar);
+	if(pSkin == NULL)
+	{
+		return;
+	}
+
+	int	choice	=Skin_GetBoundChoice(pSkin, pNode->mIndex);
+
+	choice++;
+
+	if(choice > BONE_COL_SHAPE_INVALID)
+	{
+		choice	=0;
+	}
+
+	Skin_SetBoundChoice(pSkin, pNode->mIndex, choice);
 }
