@@ -32,7 +32,6 @@
 //static data
 static char	sShapeNames[4][8]	={	{"Box"}, {"Sphere"}, {"Capsule"}, {"Invalid"}	};
 static char	sInfoText[INFO_BUF_SIZE];
-static mat4	s90Rot;
 
 //little hashy struct for tracking bone display data
 typedef struct	BoneDisplayData_t
@@ -120,8 +119,6 @@ SkellyEditor	*SKE_Create(StuffKeeper *pSK, GraphicsDevice *pGD,
 {
 	SkellyEditor	*pRet	=malloc(sizeof(SkellyEditor));
 	memset(pRet, 0, sizeof(SkellyEditor));
-
-	glm_rotate_make(s90Rot, -GLM_PI_2, (vec3){1, 0, 0});
 
 	//keep refs to groggy stuff
 	pRet->mpSK	=pSK;
@@ -530,10 +527,6 @@ static void sRenderNodeCollisionShape(const SkellyEditor *pSKE,
 		localScale[1]	=size[1] * 0.25f;
 
 		//no translation for capsules I think?
-
-		//bone space is right handed and z up
-//		glm_mat4_mul(boneMat, s90Rot, boneMat);
-
 		GD_IASetVertexBuffers(pSKE->mpGD, pSKE->mpCapsule->mpVB, pSKE->mpCapsule->mVertSize, 0);
 		GD_IASetIndexBuffers(pSKE->mpGD, pSKE->mpCapsule->mpIB, DXGI_FORMAT_R16_UINT, 0);
 	}
@@ -807,7 +800,7 @@ static void	sLengthAdjust(Skin *pSkin, int boneIdx, float amount)
 		vec3	min, max;
 		Skin_GetBoxBoundSize(pSkin, boneIdx, min, max);
 
-		max[2]	+=amount;
+		max[1]	+=amount;
 
 		Skin_SetBoxBoundSize(pSkin, boneIdx, min, max);
 	}
@@ -823,6 +816,114 @@ static void	sLengthAdjust(Skin *pSkin, int boneIdx, float amount)
 		size[1]	+=amount;
 
 		Skin_SetCapsuleBoundSize(pSkin, boneIdx, size);
+	}
+}
+
+static void	sWidthAdjust(Skin *pSkin, int boneIdx, float amount)
+{
+	int	choice	=Skin_GetBoundChoice(pSkin, boneIdx);
+
+	if(choice == BONE_COL_SHAPE_BOX)
+	{
+		vec3	min, max;
+		Skin_GetBoxBoundSize(pSkin, boneIdx, min, max);
+
+		max[0]	+=amount;
+
+		Skin_SetBoxBoundSize(pSkin, boneIdx, min, max);
+	}
+	else if(choice == BONE_COL_SHAPE_SPHERE)
+	{
+		printf("Width adjust for sphere!?\n");
+	}
+	else if(choice == BONE_COL_SHAPE_CAPSULE)
+	{
+		printf("Width adjust for capsule!?\n");
+	}
+}
+
+static void	sDepthAdjust(Skin *pSkin, int boneIdx, float amount)
+{
+	int	choice	=Skin_GetBoundChoice(pSkin, boneIdx);
+
+	if(choice == BONE_COL_SHAPE_BOX)
+	{
+		vec3	min, max;
+		Skin_GetBoxBoundSize(pSkin, boneIdx, min, max);
+
+		max[2]	+=amount;
+
+		Skin_SetBoxBoundSize(pSkin, boneIdx, min, max);
+	}
+	else if(choice == BONE_COL_SHAPE_SPHERE)
+	{
+		printf("Depth adjust for sphere!?\n");
+	}
+	else if(choice == BONE_COL_SHAPE_CAPSULE)
+	{
+		printf("Depth adjust for capsule!?\n");
+	}
+}
+
+static void	sMoveAdjust(Skin *pSkin, int boneIdx, float amount)
+{
+	int	choice	=Skin_GetBoundChoice(pSkin, boneIdx);
+
+	if(choice == BONE_COL_SHAPE_BOX)
+	{
+		vec3	min, max;
+		Skin_GetBoxBoundSize(pSkin, boneIdx, min, max);
+
+		max[1]	+=amount;
+		min[1]	+=amount;
+
+		Skin_SetBoxBoundSize(pSkin, boneIdx, min, max);
+	}
+	else if(choice == BONE_COL_SHAPE_SPHERE)
+	{
+		vec4	size;
+		Skin_GetSphereBoundSize(pSkin, boneIdx, size);
+
+		size[1]	+=amount;
+
+		Skin_SetSphereBoundSize(pSkin, boneIdx, size);
+	}
+	else if(choice == BONE_COL_SHAPE_CAPSULE)
+	{
+		printf("Move adjust for capsule!?\n");
+	}
+}
+
+static void	sSnapAdjust(Skin *pSkin, int boneIdx, float amount)
+{
+	int	choice	=Skin_GetBoundChoice(pSkin, boneIdx);
+
+	if(choice == BONE_COL_SHAPE_BOX)
+	{
+		vec3	min, max;
+		Skin_GetBoxBoundSize(pSkin, boneIdx, min, max);
+
+		//snap center to bone org
+		vec3	center;
+		glm_vec3_center(min, max, center);
+
+		glm_vec3_sub(min, center, min);
+		glm_vec3_sub(max, center, max);
+
+		Skin_SetBoxBoundSize(pSkin, boneIdx, min, max);
+	}
+	else if(choice == BONE_COL_SHAPE_SPHERE)
+	{
+		vec4	size;
+		Skin_GetSphereBoundSize(pSkin, boneIdx, size);
+
+		glm_vec3_zero(size);
+
+		Skin_SetSphereBoundSize(pSkin, boneIdx, size);
+	}
+	else if(choice == BONE_COL_SHAPE_CAPSULE)
+	{
+		printf("Snap adjust for capsule!?\n");
 	}
 }
 
@@ -957,6 +1058,24 @@ static void	BoxWidthIncreaseEH(void *pContext, const SDL_Event *pEvt)
 	{
 		return;
 	}
+	if(pSKE->mpChar == NULL)
+	{
+		return;
+	}
+
+	int	sel	=sGetSingleNodeSelected(pSKE->mpBDD);
+	if(sel == -1)
+	{
+		return;
+	}
+
+	Skin	*pSkin	=Character_GetSkin(pSKE->mpChar);
+	if(pSkin == NULL)
+	{
+		return;
+	}
+
+	sWidthAdjust(pSkin, sel, LENGTH_INCREMENT);
 }
 
 static void	BoxWidthDecreaseEH(void *pContext, const SDL_Event *pEvt)
@@ -968,6 +1087,24 @@ static void	BoxWidthDecreaseEH(void *pContext, const SDL_Event *pEvt)
 	{
 		return;
 	}
+	if(pSKE->mpChar == NULL)
+	{
+		return;
+	}
+
+	int	sel	=sGetSingleNodeSelected(pSKE->mpBDD);
+	if(sel == -1)
+	{
+		return;
+	}
+
+	Skin	*pSkin	=Character_GetSkin(pSKE->mpChar);
+	if(pSkin == NULL)
+	{
+		return;
+	}
+
+	sWidthAdjust(pSkin, sel, -LENGTH_INCREMENT);
 }
 
 static void	LengthIncreaseEH(void *pContext, const SDL_Event *pEvt)
@@ -995,8 +1132,6 @@ static void	LengthIncreaseEH(void *pContext, const SDL_Event *pEvt)
 	{
 		return;
 	}
-
-	int	choice	=Skin_GetBoundChoice(pSkin, sel);
 
 	sLengthAdjust(pSkin, sel, LENGTH_INCREMENT);
 }
@@ -1027,8 +1162,6 @@ static void	LengthDecreaseEH(void *pContext, const SDL_Event *pEvt)
 		return;
 	}
 
-	int	choice	=Skin_GetBoundChoice(pSkin, sel);
-
 	sLengthAdjust(pSkin, sel, -LENGTH_INCREMENT);
 }
 
@@ -1041,6 +1174,24 @@ static void	BoxDepthIncreaseEH(void *pContext, const SDL_Event *pEvt)
 	{
 		return;
 	}
+	if(pSKE->mpChar == NULL)
+	{
+		return;
+	}
+
+	int	sel	=sGetSingleNodeSelected(pSKE->mpBDD);
+	if(sel == -1)
+	{
+		return;
+	}
+
+	Skin	*pSkin	=Character_GetSkin(pSKE->mpChar);
+	if(pSkin == NULL)
+	{
+		return;
+	}
+
+	sDepthAdjust(pSkin, sel, LENGTH_INCREMENT);
 }
 
 static void	BoxDepthDecreaseEH(void *pContext, const SDL_Event *pEvt)
@@ -1052,6 +1203,24 @@ static void	BoxDepthDecreaseEH(void *pContext, const SDL_Event *pEvt)
 	{
 		return;
 	}
+	if(pSKE->mpChar == NULL)
+	{
+		return;
+	}
+
+	int	sel	=sGetSingleNodeSelected(pSKE->mpBDD);
+	if(sel == -1)
+	{
+		return;
+	}
+
+	Skin	*pSkin	=Character_GetSkin(pSKE->mpChar);
+	if(pSkin == NULL)
+	{
+		return;
+	}
+
+	sDepthAdjust(pSkin, sel, -LENGTH_INCREMENT);
 }
 
 static void	RadiusIncreaseEH(void *pContext, const SDL_Event *pEvt)
@@ -1079,8 +1248,6 @@ static void	RadiusIncreaseEH(void *pContext, const SDL_Event *pEvt)
 	{
 		return;
 	}
-
-	int	choice	=Skin_GetBoundChoice(pSkin, sel);
 
 	sRadiusAdjust(pSkin, sel, RADIUS_INCREMENT);
 }
@@ -1111,8 +1278,6 @@ static void	RadiusDecreaseEH(void *pContext, const SDL_Event *pEvt)
 		return;
 	}
 
-	int	choice	=Skin_GetBoundChoice(pSkin, sel);
-
 	sRadiusAdjust(pSkin, sel, -RADIUS_INCREMENT);
 }
 
@@ -1125,6 +1290,24 @@ static void	SnapToJointEH(void *pContext, const SDL_Event *pEvt)
 	{
 		return;
 	}
+	if(pSKE->mpChar == NULL)
+	{
+		return;
+	}
+
+	int	sel	=sGetSingleNodeSelected(pSKE->mpBDD);
+	if(sel == -1)
+	{
+		return;
+	}
+
+	Skin	*pSkin	=Character_GetSkin(pSKE->mpChar);
+	if(pSkin == NULL)
+	{
+		return;
+	}	
+
+	sSnapAdjust(pSkin, sel, LENGTH_INCREMENT);
 }
 
 static void	MirrorEH(void *pContext, const SDL_Event *pEvt)
@@ -1135,6 +1318,68 @@ static void	MirrorEH(void *pContext, const SDL_Event *pEvt)
 	if(pSKE->mbAdjustingMode)
 	{
 		return;
+	}
+	if(pSKE->mpALib == NULL)
+	{
+		return;
+	}
+	if(pSKE->mpChar == NULL)
+	{
+		return;
+	}
+
+	const Skeleton	*pSkel	=AnimLib_GetSkeleton(pSKE->mpALib);
+	if(pSkel == NULL)
+	{
+		return;
+	}
+	Skin	*pSkin	=Character_GetSkin(pSKE->mpChar);
+	if(pSkin == NULL)
+	{
+		return;
+	}
+
+	int	numSelected	=0;
+	for(const BoneDisplayData *pCur=pSKE->mpBDD;pCur != NULL;pCur=pCur->hh.next)
+	{
+		if(pCur->mbSelected)
+		{
+			numSelected++;
+
+			GSNode	*pMirror	=Skeleton_GetBoneMirror(pSkel, pCur->mpNode->szName);
+			if(pMirror == NULL)
+			{
+				continue;
+			}
+			int	idx		=pCur->mpNode->mIndex;
+			int	midx	=pMirror->mIndex;
+			int	choice	=Skin_GetBoundChoice(pSkin, idx);
+
+			Skin_SetBoundChoice(pSkin, midx, choice);
+
+			if(choice == BONE_COL_SHAPE_BOX)
+			{
+				vec3	min, max;
+				Skin_GetBoxBoundSize(pSkin, idx, min, max);
+				Skin_SetBoxBoundSize(pSkin, midx, min, max);
+			}
+			else if(choice == BONE_COL_SHAPE_SPHERE)
+			{
+				vec4	size;
+				Skin_GetSphereBoundSize(pSkin, idx, size);
+				Skin_SetSphereBoundSize(pSkin, midx, size);
+			}
+			else if(choice == BONE_COL_SHAPE_CAPSULE)
+			{
+				vec2	size;
+				Skin_GetCapsuleBoundSize(pSkin, idx, size);
+				Skin_SetCapsuleBoundSize(pSkin, midx, size);
+			}
+			else if(choice == BONE_COL_SHAPE_INVALID)
+			{
+				printf("Just mirrored an invalid collision shape, hope you wanted that!\n");
+			}
+		}
 	}
 }
 
@@ -1147,6 +1392,24 @@ static void	MoveForwardEH(void *pContext, const SDL_Event *pEvt)
 	{
 		return;
 	}
+	if(pSKE->mpChar == NULL)
+	{
+		return;
+	}
+
+	int	sel	=sGetSingleNodeSelected(pSKE->mpBDD);
+	if(sel == -1)
+	{
+		return;
+	}
+
+	Skin	*pSkin	=Character_GetSkin(pSKE->mpChar);
+	if(pSkin == NULL)
+	{
+		return;
+	}
+
+	sMoveAdjust(pSkin, sel, RADIUS_INCREMENT);
 }
 
 static void	MoveBackwardEH(void *pContext, const SDL_Event *pEvt)
@@ -1158,6 +1421,24 @@ static void	MoveBackwardEH(void *pContext, const SDL_Event *pEvt)
 	{
 		return;
 	}
+	if(pSKE->mpChar == NULL)
+	{
+		return;
+	}
+
+	int	sel	=sGetSingleNodeSelected(pSKE->mpBDD);
+	if(sel == -1)
+	{
+		return;
+	}
+
+	Skin	*pSkin	=Character_GetSkin(pSKE->mpChar);
+	if(pSkin == NULL)
+	{
+		return;
+	}
+
+	sMoveAdjust(pSkin, sel, -RADIUS_INCREMENT);
 }
 
 static void	ChangeShapeEH(void *pContext, const SDL_Event *pEvt)
