@@ -21,15 +21,18 @@
 #define	INFO_BUF_SIZE		1024
 #define	BONE_VERTICAL_SIZE	30
 #define	COLLAPSE_INTERVAL	(0.25f)
+#define	RADIUS_INCREMENT	(0.001f)
+#define	LENGTH_INCREMENT	(0.001f)
 
 //clay colours
 #define COLOR_ORANGE		(Clay_Color) {225, 138, 50, 255}
 #define COLOR_BLUE			(Clay_Color) {111, 173, 162, 255}
 #define COLOR_GOLD			(Clay_Color) {255, 222, 162, 255}
 
-//static data for making text
+//static data
 static char	sShapeNames[4][8]	={	{"Box"}, {"Sphere"}, {"Capsule"}, {"Invalid"}	};
 static char	sInfoText[INFO_BUF_SIZE];
+static mat4	s90Rot;
 
 //little hashy struct for tracking bone display data
 typedef struct	BoneDisplayData_t
@@ -103,8 +106,8 @@ static void	LengthIncreaseEH(void *pContext, const SDL_Event *pEvt);
 static void	LengthDecreaseEH(void *pContext, const SDL_Event *pEvt);
 static void	BoxDepthIncreaseEH(void *pContext, const SDL_Event *pEvt);
 static void	BoxDepthDecreaseEH(void *pContext, const SDL_Event *pEvt);
-static void	SphereRadiusIncreaseEH(void *pContext, const SDL_Event *pEvt);
-static void	SphereRadiusDecreaseEH(void *pContext, const SDL_Event *pEvt);
+static void	RadiusIncreaseEH(void *pContext, const SDL_Event *pEvt);
+static void	RadiusDecreaseEH(void *pContext, const SDL_Event *pEvt);
 static void	SnapToJointEH(void *pContext, const SDL_Event *pEvt);
 static void	MirrorEH(void *pContext, const SDL_Event *pEvt);
 static void	MoveForwardEH(void *pContext, const SDL_Event *pEvt);
@@ -117,6 +120,8 @@ SkellyEditor	*SKE_Create(StuffKeeper *pSK, GraphicsDevice *pGD,
 {
 	SkellyEditor	*pRet	=malloc(sizeof(SkellyEditor));
 	memset(pRet, 0, sizeof(SkellyEditor));
+
+	glm_rotate_make(s90Rot, -GLM_PI_2, (vec3){1, 0, 0});
 
 	//keep refs to groggy stuff
 	pRet->mpSK	=pSK;
@@ -133,29 +138,32 @@ SkellyEditor	*SKE_Create(StuffKeeper *pSK, GraphicsDevice *pGD,
 	pRet->mpTriSolidSpec	=StuffKeeper_GetPixelShader(pSK, "TriSolidSpecPS");
 
 	//prims
-	pRet->mpCube	=PF_CreateCube(1.0f, false, pGD);
+	pRet->mpCube	=PF_CreateCube(1.0f, true, pGD);
 	pRet->mpSphere	=PF_CreateSphere((vec3){0,0,0}, 1.0f, pGD);
-	pRet->mpCapsule	=PF_CreateCapsule(1.0f, 2.0f, pGD);
+	pRet->mpCapsule	=PF_CreateCapsule(1.0f, 4.0f, pGD);
 
 	//input handlers
+	//press events
 	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_c, CollapseBonesEH, pRet);	//collapse/uncollapse selected bones
 	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_n, MarkUnusedBonesEH, pRet);	//mark bones that aren't used in vert weights
 	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_DELETE, DeleteBonesEH, pRet);	//nuke selected bones
 	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_p, SkelPopOutEH, pRet);		//pop outsidebar
 	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_BACKSLASH, AdjustBoneBoundEH, pRet);
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_y, BoxWidthIncreaseEH, pRet);
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_u, BoxWidthDecreaseEH, pRet);
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_i, LengthIncreaseEH, pRet);
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_o, LengthDecreaseEH, pRet);
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_LEFTBRACKET, BoxDepthIncreaseEH, pRet);
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_RIGHTBRACKET, BoxDepthDecreaseEH, pRet);
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_g, SphereRadiusIncreaseEH, pRet);
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_h, SphereRadiusDecreaseEH, pRet);
 	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_j, SnapToJointEH, pRet);
 	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_m, MirrorEH, pRet);
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_v, MoveForwardEH, pRet);
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_b, MoveBackwardEH, pRet);
 	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_COMMA, ChangeShapeEH, pRet);
+
+	//hold events
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_y, BoxWidthIncreaseEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_u, BoxWidthDecreaseEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_i, LengthIncreaseEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_o, LengthDecreaseEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_LEFTBRACKET, BoxDepthIncreaseEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_RIGHTBRACKET, BoxDepthDecreaseEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_g, RadiusIncreaseEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_h, RadiusDecreaseEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_v, MoveForwardEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_b, MoveBackwardEH, pRet);
 
 	return	pRet;
 }
@@ -469,19 +477,67 @@ static void sRenderNodeCollisionShape(const SkellyEditor *pSKE,
 		return;
 	}
 
-	const Skin		*pSkin	=Character_GetConstSkin(pSKE->mpChar);
+	const Skin	*pSkin	=Character_GetConstSkin(pSKE->mpChar);
+	int			choice	=Skin_GetBoundChoice(pSkin, nodeIndex);
+	if(choice == BONE_COL_SHAPE_INVALID)
+	{
+		return;
+	}
+
 	const Skeleton	*pSkel	=AnimLib_GetSkeleton(pSKE->mpALib);
 
-	int	choice	=Skin_GetBoundChoice(pSkin, nodeIndex);
-
-	vec4	capSize;
-	Skin_GetBoundSize(pSkin, nodeIndex, capSize);
+	vec3	localScale		={	1,	1,	1	};
 
 	mat4	boneMat;
 	Skin_GetBoneByIndexNoBind(pSkin, pSkel, nodeIndex, boneMat);
 
-	GD_IASetVertexBuffers(pSKE->mpGD, pSKE->mpSphere->mpVB, pSKE->mpSphere->mVertSize, 0);
-	GD_IASetIndexBuffers(pSKE->mpGD, pSKE->mpSphere->mpIB, DXGI_FORMAT_R16_UINT, 0);
+	if(choice == BONE_COL_SHAPE_BOX)
+	{
+		vec3	min, max, center;
+
+		Skin_GetBoxBoundSize(pSkin, nodeIndex, min, max);
+
+		glm_vec3_center(min, max, center);
+
+		glm_vec3_sub(max, min, localScale);
+
+		glm_translate(boneMat, center);
+
+		GD_IASetVertexBuffers(pSKE->mpGD, pSKE->mpCube->mpVB, pSKE->mpCube->mVertSize, 0);
+		GD_IASetIndexBuffers(pSKE->mpGD, pSKE->mpCube->mpIB, DXGI_FORMAT_R16_UINT, 0);
+	}
+	else if(choice == BONE_COL_SHAPE_SPHERE)
+	{
+		vec4	size;
+
+		Skin_GetSphereBoundSize(pSkin, nodeIndex, size);
+
+		glm_translate(boneMat, size);
+
+		glm_vec3_broadcast(size[3], localScale);
+
+		GD_IASetVertexBuffers(pSKE->mpGD, pSKE->mpSphere->mpVB, pSKE->mpSphere->mVertSize, 0);
+		GD_IASetIndexBuffers(pSKE->mpGD, pSKE->mpSphere->mpIB, DXGI_FORMAT_R16_UINT, 0);
+	}
+	else if(choice == BONE_COL_SHAPE_CAPSULE)
+	{
+		vec2	size;
+
+		Skin_GetCapsuleBoundSize(pSkin, nodeIndex, size);
+
+		//radius scales XZ, length Y, but the prim len is 4
+		localScale[0]	=localScale[2]	=size[0];
+		localScale[1]	=size[1] * 0.25f;
+
+		//no translation for capsules I think?
+
+		//bone space is right handed and z up
+//		glm_mat4_mul(boneMat, s90Rot, boneMat);
+
+		GD_IASetVertexBuffers(pSKE->mpGD, pSKE->mpCapsule->mpVB, pSKE->mpCapsule->mVertSize, 0);
+		GD_IASetIndexBuffers(pSKE->mpGD, pSKE->mpCapsule->mpIB, DXGI_FORMAT_R16_UINT, 0);
+	}
+
 	GD_VSSetShader(pSKE->mpGD, pSKE->mpWNormWPos);
 	GD_PSSetShader(pSKE->mpGD, pSKE->mpTriSolidSpec);
 	GD_IASetInputLayout(pSKE->mpGD, pSKE->mpPrimLayout);
@@ -493,7 +549,6 @@ static void sRenderNodeCollisionShape(const SkellyEditor *pSKE,
 	vec3	lightColour1	={	0.8f,	0.8f,	0.8f	};
 	vec3	lightColour2	={	0.6f,	0.6f,	0.6f	};
 	vec3	specColour		={	1,		1,		1		};
-	vec3	localScale		={	capSize[3],	capSize[3],	capSize[3]	};
 
 	CBK_SetLocalScale(pSKE->mpCBK, localScale);
 
@@ -503,7 +558,22 @@ static void sRenderNodeCollisionShape(const SkellyEditor *pSKE,
 	CBK_SetWorldMat(pSKE->mpCBK, boneMat);
 	CBK_UpdateObject(pSKE->mpCBK, pSKE->mpGD);
 
-	GD_DrawIndexed(pSKE->mpGD, pSKE->mpSphere->mIndexCount, 0, 0);
+	if(choice == BONE_COL_SHAPE_BOX)
+	{
+		GD_DrawIndexed(pSKE->mpGD, pSKE->mpCube->mIndexCount, 0, 0);
+	}
+	else if(choice == BONE_COL_SHAPE_SPHERE)
+	{
+		GD_DrawIndexed(pSKE->mpGD, pSKE->mpSphere->mIndexCount, 0, 0);
+	}
+	else if(choice == BONE_COL_SHAPE_CAPSULE)
+	{
+		GD_DrawIndexed(pSKE->mpGD, pSKE->mpCapsule->mIndexCount, 0, 0);
+	}
+	else if(choice == BONE_COL_SHAPE_INVALID)
+	{
+		assert(0);
+	}
 }
 
 //figure out what should go in the info box based
@@ -697,6 +767,66 @@ static void sSkeletonLayout(const GSNode *pNode, SkellyEditor *pSKE, int colStat
 }
 
 
+//bone collision adjuster functions
+static void	sRadiusAdjust(Skin *pSkin, int boneIdx, float amount)
+{
+	int	choice	=Skin_GetBoundChoice(pSkin, boneIdx);
+
+	if(choice == BONE_COL_SHAPE_BOX)
+	{
+		printf("Radius increase for box?\n");
+		return;
+	}
+
+	if(choice == BONE_COL_SHAPE_SPHERE)
+	{
+		vec4	size;
+		Skin_GetSphereBoundSize(pSkin, boneIdx, size);
+
+		size[3]	+=amount;
+
+		Skin_SetSphereBoundSize(pSkin, boneIdx, size);
+	}
+	else if(choice == BONE_COL_SHAPE_CAPSULE)
+	{
+		vec2	size;
+		Skin_GetCapsuleBoundSize(pSkin, boneIdx, size);
+
+		size[0]	+=amount;
+
+		Skin_SetCapsuleBoundSize(pSkin, boneIdx, size);
+	}
+}
+
+static void	sLengthAdjust(Skin *pSkin, int boneIdx, float amount)
+{
+	int	choice	=Skin_GetBoundChoice(pSkin, boneIdx);
+
+	if(choice == BONE_COL_SHAPE_BOX)
+	{
+		vec3	min, max;
+		Skin_GetBoxBoundSize(pSkin, boneIdx, min, max);
+
+		max[2]	+=amount;
+
+		Skin_SetBoxBoundSize(pSkin, boneIdx, min, max);
+	}
+	else if(choice == BONE_COL_SHAPE_SPHERE)
+	{
+		printf("Length adjust for sphere!?\n");
+	}
+	else if(choice == BONE_COL_SHAPE_CAPSULE)
+	{
+		vec2	size;
+		Skin_GetCapsuleBoundSize(pSkin, boneIdx, size);
+
+		size[1]	+=amount;
+
+		Skin_SetCapsuleBoundSize(pSkin, boneIdx, size);
+	}
+}
+
+
 //input event handlers
 static void CollapseBonesEH(void *pContext, const SDL_Event *pEvt)
 {
@@ -849,6 +979,26 @@ static void	LengthIncreaseEH(void *pContext, const SDL_Event *pEvt)
 	{
 		return;
 	}
+	if(pSKE->mpChar == NULL)
+	{
+		return;
+	}
+
+	int	sel	=sGetSingleNodeSelected(pSKE->mpBDD);
+	if(sel == -1)
+	{
+		return;
+	}
+
+	Skin	*pSkin	=Character_GetSkin(pSKE->mpChar);
+	if(pSkin == NULL)
+	{
+		return;
+	}
+
+	int	choice	=Skin_GetBoundChoice(pSkin, sel);
+
+	sLengthAdjust(pSkin, sel, LENGTH_INCREMENT);
 }
 
 static void	LengthDecreaseEH(void *pContext, const SDL_Event *pEvt)
@@ -860,6 +1010,26 @@ static void	LengthDecreaseEH(void *pContext, const SDL_Event *pEvt)
 	{
 		return;
 	}
+	if(pSKE->mpChar == NULL)
+	{
+		return;
+	}
+
+	int	sel	=sGetSingleNodeSelected(pSKE->mpBDD);
+	if(sel == -1)
+	{
+		return;
+	}
+
+	Skin	*pSkin	=Character_GetSkin(pSKE->mpChar);
+	if(pSkin == NULL)
+	{
+		return;
+	}
+
+	int	choice	=Skin_GetBoundChoice(pSkin, sel);
+
+	sLengthAdjust(pSkin, sel, -LENGTH_INCREMENT);
 }
 
 static void	BoxDepthIncreaseEH(void *pContext, const SDL_Event *pEvt)
@@ -884,7 +1054,7 @@ static void	BoxDepthDecreaseEH(void *pContext, const SDL_Event *pEvt)
 	}
 }
 
-static void	SphereRadiusIncreaseEH(void *pContext, const SDL_Event *pEvt)
+static void	RadiusIncreaseEH(void *pContext, const SDL_Event *pEvt)
 {
 	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
 	assert(pSKE);
@@ -893,9 +1063,29 @@ static void	SphereRadiusIncreaseEH(void *pContext, const SDL_Event *pEvt)
 	{
 		return;
 	}
+	if(pSKE->mpChar == NULL)
+	{
+		return;
+	}
+
+	int	sel	=sGetSingleNodeSelected(pSKE->mpBDD);
+	if(sel == -1)
+	{
+		return;
+	}
+
+	Skin	*pSkin	=Character_GetSkin(pSKE->mpChar);
+	if(pSkin == NULL)
+	{
+		return;
+	}
+
+	int	choice	=Skin_GetBoundChoice(pSkin, sel);
+
+	sRadiusAdjust(pSkin, sel, RADIUS_INCREMENT);
 }
 
-static void	SphereRadiusDecreaseEH(void *pContext, const SDL_Event *pEvt)
+static void	RadiusDecreaseEH(void *pContext, const SDL_Event *pEvt)
 {
 	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
 	assert(pSKE);
@@ -904,6 +1094,26 @@ static void	SphereRadiusDecreaseEH(void *pContext, const SDL_Event *pEvt)
 	{
 		return;
 	}
+	if(pSKE->mpChar == NULL)
+	{
+		return;
+	}
+
+	int	sel	=sGetSingleNodeSelected(pSKE->mpBDD);
+	if(sel == -1)
+	{
+		return;
+	}
+
+	Skin	*pSkin	=Character_GetSkin(pSKE->mpChar);
+	if(pSkin == NULL)
+	{
+		return;
+	}
+
+	int	choice	=Skin_GetBoundChoice(pSkin, sel);
+
+	sRadiusAdjust(pSkin, sel, -RADIUS_INCREMENT);
 }
 
 static void	SnapToJointEH(void *pContext, const SDL_Event *pEvt)
@@ -956,6 +1166,10 @@ static void	ChangeShapeEH(void *pContext, const SDL_Event *pEvt)
 	assert(pSKE);
 
 	if(pSKE->mbAdjustingMode)
+	{
+		return;
+	}
+	if(pSKE->mpChar == NULL)
 	{
 		return;
 	}
