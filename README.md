@@ -88,3 +88,29 @@ Anim Tab:
 So you HAVE to use the hotkey to generate keys.  Everything you see on the web will say I, but in industry standard mode this is S.  Remember this and save yourself hours of fruitless googling.  The various key related menus do NOTHING.
 
 Watch for keys not exporting.  Sometimes there will be a problem bone (usually hips) that won't export so if you are leaning into a run it looks like your character is floating backward when exported.  There seems no way to fix this other than trash the entire anim and start over.  Hey, it's free!
+
+# Importing
+The complicated collada xml import stuff is still in C# land.  Luckily this works fine on linux as long as no winforms are in use.  To that end I split out small pieces of the old C# functionality into a standalone command line utility called ccnogui.  This is in the old GrogTools repo.
+
+See the docs there for details but an example of converting a character would be:
+```bash
+ccnogui -meters -character MyHero.dae
+```
+
+This will save a MyHero.Character that can be loaded by ColladaConvertC.
+
+An example of making an animation library in quake units from a few dae files:
+```bash
+ccnogui -quake -anim HeroRun.dae -animlib Actions.AnimLib
+ccnogui -quake -anim HeroJump.dae -animlib Actions.AnimLib
+ccnogui -quake -anim HeroSlide.dae -animlib Actions.AnimLib
+ccnogui -quake -anim HeroClimb.dae -animlib Actions.AnimLib
+ccnogui -quake -anim HeroSwim.dae -animlib Actions.AnimLib
+ccnogui -quake -anim HeroDie.dae -animlib Actions.AnimLib
+ccnogui -quake -anim HeroIdle.dae -animlib Actions.AnimLib
+```
+
+This will save them all to Actions.AnimLib which can be loaded by ColladaConvertC.
+
+# Bone Collision
+The bone editing stuff is using in-render-window gui and slides out with the P key.  After that most keys will be showin in the info panel at the bottom (and will likely change as they are goofy right now).
