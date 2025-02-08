@@ -17,9 +17,13 @@ x	Save buttons
 x	Statics
 x	Better error prints
 	Basic collision shape editing / display
-	Bone collision shape editing / display
+x	Bone collision shape editing / display
 	Don't copy alpha channel for SRV (clearer image)
 	Fix memleaks!
+	Checkbox or key toggle off axis draw
+	Keys to change size of axis
+	key to expand all bones in skellyeeditir
+	toggle select all bones
 
 
 tool
