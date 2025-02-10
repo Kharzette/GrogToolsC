@@ -21,8 +21,10 @@
 #define	INFO_BUF_SIZE	1024
 #define	RESX			1280
 #define	RAY_LEN			5
+#define	RAY_MOVE_AMOUNT	(0.005f)
 
 //static data
+__attribute_maybe_unused__
 static char	sShapeNames[4][8]	={	{"Box"}, {"Sphere"}, {"Capsule"}, {"Invalid"}	};
 static char	sInfoText[INFO_BUF_SIZE];
 
@@ -47,6 +49,7 @@ typedef struct	RayCaster_t
 	//misc stuffz
 	bool	mbVisible;
 	vec3	mRayDir;
+	vec3	mRayTarget;
 
 	//popout mover
 	Mover	*mpRCM;
@@ -60,6 +63,10 @@ static void	sMakeInfoString(const RayCaster *pRC);
 //keybind statics
 static void	RandomizeRayEH(void *pContext, const SDL_Event *pEvt);
 static void RCPopOutEH(void *pContext, const SDL_Event *pEvt);
+static void	RayLeftEH(void *pContext, const SDL_Event *pEvt);
+static void	RayRightEH(void *pContext, const SDL_Event *pEvt);
+static void	RayUpEH(void *pContext, const SDL_Event *pEvt);
+static void	RayDownEH(void *pContext, const SDL_Event *pEvt);
 
 
 RayCaster	*RC_Create(StuffKeeper *pSK, GraphicsDevice *pGD,
@@ -89,6 +96,12 @@ RayCaster	*RC_Create(StuffKeeper *pSK, GraphicsDevice *pGD,
 	//press events
 	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_F3, RCPopOutEH, pRet);		//pop outsidebar
 	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_r, RandomizeRayEH, pRet);
+
+	//held
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_LEFT, RayLeftEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_RIGHT, RayRightEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_UP, RayUpEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_DOWN, RayDownEH, pRet);
 
 	return	pRet;
 }
@@ -124,7 +137,7 @@ void	RC_Render(RayCaster *pRC)
 	vec3	rayLoc;
 
 	glm_vec3_scale(pRC->mRayDir, (RAY_LEN / 2.0f), rayLoc);
-	glm_vec3_sub(GLM_VEC3_ZERO, rayLoc, rayLoc);
+	glm_vec3_sub(pRC->mRayTarget, rayLoc, rayLoc);
 
 	CBK_SetLocalScale(pRC->mpCBK, localScale);
 
@@ -206,11 +219,11 @@ static void	sMakeInfoString(const RayCaster *pRC)
 	else if(pRC->mpStat != NULL)
 	{
 		int	numParts	=Static_GetNumParts(pRC->mpStat);
-		sprintf(sInfoText, "Static mesh with %d parts loaded.", numParts);
+		sprintf(sInfoText, "Static mesh with %d parts loaded.  Use arrow keys to adjust ray, or r to randomize direction.", numParts);
 	}
 	else if(pRC->mpChar != NULL && pRC->mpALib != NULL)
 	{
-		sprintf(sInfoText, "Character and AnimLib loaded.");
+		sprintf(sInfoText, "Character and AnimLib loaded.  Use arrow keys to adjust ray, or r to randomize direction.");
 	}
 }
 
@@ -263,4 +276,84 @@ static void RCPopOutEH(void *pContext, const SDL_Event *pEvt)
 	}
 
 	pRC->mbVisible	=!pRC->mbVisible;
+}
+
+static void	RayLeftEH(void *pContext, const SDL_Event *pEvt)
+{
+	RayCaster	*pRC	=(RayCaster *)pContext;
+	assert(pRC);
+
+	vec4	mvPos;
+	Mover_GetPos(pRC->mpRCM, mvPos);
+
+	if(mvPos[0] > 0)
+	{
+		vec3	xVec, yVec, zVec;
+
+		Misc_BuildBasisVecsFromDirection(pRC->mRayDir, xVec, yVec, zVec);
+
+		glm_vec3_scale(xVec, -RAY_MOVE_AMOUNT, xVec);
+
+		glm_vec3_add(pRC->mRayTarget, xVec, pRC->mRayTarget);
+	}
+}
+
+static void	RayRightEH(void *pContext, const SDL_Event *pEvt)
+{
+	RayCaster	*pRC	=(RayCaster *)pContext;
+	assert(pRC);
+
+	vec4	mvPos;
+	Mover_GetPos(pRC->mpRCM, mvPos);
+
+	if(mvPos[0] > 0)
+	{
+		vec3	xVec, yVec, zVec;
+
+		Misc_BuildBasisVecsFromDirection(pRC->mRayDir, xVec, yVec, zVec);
+
+		glm_vec3_scale(xVec, RAY_MOVE_AMOUNT, xVec);
+
+		glm_vec3_add(pRC->mRayTarget, xVec, pRC->mRayTarget);
+	}
+}
+
+static void	RayUpEH(void *pContext, const SDL_Event *pEvt)
+{
+	RayCaster	*pRC	=(RayCaster *)pContext;
+	assert(pRC);
+
+	vec4	mvPos;
+	Mover_GetPos(pRC->mpRCM, mvPos);
+
+	if(mvPos[0] > 0)
+	{
+		vec3	xVec, yVec, zVec;
+
+		Misc_BuildBasisVecsFromDirection(pRC->mRayDir, xVec, yVec, zVec);
+
+		glm_vec3_scale(yVec, RAY_MOVE_AMOUNT, yVec);
+
+		glm_vec3_add(pRC->mRayTarget, yVec, pRC->mRayTarget);
+	}
+}
+
+static void	RayDownEH(void *pContext, const SDL_Event *pEvt)
+{
+	RayCaster	*pRC	=(RayCaster *)pContext;
+	assert(pRC);
+
+	vec4	mvPos;
+	Mover_GetPos(pRC->mpRCM, mvPos);
+
+	if(mvPos[0] > 0)
+	{
+		vec3	xVec, yVec, zVec;
+
+		Misc_BuildBasisVecsFromDirection(pRC->mRayDir, xVec, yVec, zVec);
+
+		glm_vec3_scale(yVec, -RAY_MOVE_AMOUNT, yVec);
+
+		glm_vec3_add(pRC->mRayTarget, yVec, pRC->mRayTarget);
+	}
 }
