@@ -95,6 +95,7 @@ typedef struct AppContext_t
 	int		mAnimIndex, mMatIndex;
 	float	mAnimTime;
 	bool	mbLeftMouseDown;
+	bool	mbDrawAxis;
 
 	//clay pointer stuff
 	Clay_Vector2	mScrollDelta;
@@ -135,7 +136,7 @@ typedef struct AppContext_t
 typedef void	(*ReNameFunc)(void *, const char *, const char *);
 
 //static forward decs
-static void				SetupKeyBinds(Input *pInp);
+static void				sSetupKeyBinds(Input *pInp);
 static void				SetupRastVP(AppContext *pApp);
 static const Image		*sMakeSmallVColourBox(vec3 colour);
 static const Image		*sMakeSmallColourBox(color_t colour);
@@ -174,6 +175,7 @@ static void	KeyTurnDownEH(void *pContext, const SDL_Event *pEvt);
 static void MouseMoveEH(void *pContext, const SDL_Event *pEvt);
 static void MouseWheelEH(void *pContext, const SDL_Event *pEvt);
 static void EscEH(void *pContext, const SDL_Event *pEvt);
+static void AxisEH(void *pContext, const SDL_Event *pEvt);
 
 //button event handlers
 static void sLoadCharacter(AppContext *pAC, Event *pEvt);
@@ -561,7 +563,7 @@ static AppContext	*sAppCreate(void)
 
 	//input and key / mouse bindings
 	pApp->mpInp	=INP_CreateInput();
-	SetupKeyBinds(pApp->mpInp);
+	sSetupKeyBinds(pApp->mpInp);
 
 	//SDL is a pain in the ass
 	pApp->mbPosDiffTaken	=false;
@@ -655,7 +657,8 @@ static AppContext	*sAppCreate(void)
 
 	pApp->mpSKE	=SKE_Create(pApp->mpSK, pApp->mpGD, pApp->mpCBK, pApp->mpInp);
 
-	pApp->mbRunning	=true;
+	pApp->mbRunning		=true;
+	pApp->mbDrawAxis	=true;
 
 	return	pApp;
 }
@@ -731,13 +734,15 @@ static void sRender(AppContext *pApp, const real64_t prTime, const real64_t cTim
 	CBK_UpdateFrame(pApp->mpCBK, pApp->mpGD);
 
 	//draw xyz axis
-	CP_DrawAxis(pApp->mpAxis, pApp->mLightDir, XAxisCol, YAxisCol, ZAxisCol, pApp->mpCBK, pApp->mpGD);
-	//draw light ray
+	if(pApp->mbDrawAxis)
 	{
-		vec3	rayLoc	={	0.0f, 5.0f, 0.0f	};
-		CP_DrawLightRay(pApp->mpLR, pApp->mLightDir, lightRayCol, rayLoc, pApp->mpCBK, pApp->mpGD);
+		CP_DrawAxis(pApp->mpAxis, pApp->mLightDir, XAxisCol, YAxisCol, ZAxisCol, pApp->mpCBK, pApp->mpGD);
+		//draw light ray
+		{
+			vec3	rayLoc	={	0.0f, 5.0f, 0.0f	};
+			CP_DrawLightRay(pApp->mpLR, pApp->mLightDir, lightRayCol, rayLoc, pApp->mpCBK, pApp->mpGD);
+		}
 	}
-
 	GD_PSSetSampler(pApp->mpGD, StuffKeeper_GetSamplerState(pApp->mpSK, "PointClamp"), 0);
 
 	//draw mesh
@@ -829,11 +834,12 @@ static void sAppUpdate(AppContext *pApp, const real64_t prTime, const real64_t c
 
 osmain_sync(TIC_RATE, sAppCreate, sAppDestroy, sAppUpdate, "", AppContext)
 
-static void	SetupKeyBinds(Input *pInp)
+static void	sSetupKeyBinds(Input *pInp)
 {
 	//event style bindings
 	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_l, RandLightEH);		//randomize light dir
 	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_ESCAPE, EscEH);
+	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_x, AxisEH);
 
 	//held bindings
 	//movement
@@ -1105,6 +1111,15 @@ static void	EscEH(void *pContext, const SDL_Event *pEvt)
 	assert(pTS);
 
 	pTS->mbRunning	=false;
+}
+
+static void	AxisEH(void *pContext, const SDL_Event *pEvt)
+{
+	AppContext	*pTS	=(AppContext *)pContext;
+
+	assert(pTS);
+
+	pTS->mbDrawAxis	=!pTS->mbDrawAxis;
 }
 
 

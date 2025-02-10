@@ -19,3 +19,6 @@ dotnet arguments
 	-centimeters -grog -meters -valve -quake	units to use
 	-static filename.dae						Load static dae file, save .mesh and .static
 	-character filename.dae						Load character dae file, save .mesh and .character
+	-anim filename.dae							Load dae animation
+	-animlib filename.AnimLib					Save anims to this anim lib
+	-righthanded								Save for right handed coordinate system (default left)

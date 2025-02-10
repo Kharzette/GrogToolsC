@@ -72,6 +72,10 @@ typedef struct	SkellyEditor_t
 	//clay pointer stuff
 	Clay_Vector2	mScrollDelta;
 
+	//modifier keys held?
+	int	mShiftHeld;	//0 or 1 or 2 (left & right)
+	int	mCtrlHeld;	//0 or 1 or 2 (left & right)
+
 	//skelly editor data
 	BoneDisplayData	*mpBDD;
 	bool			mbSEVisible;		//user wants to see skelly editor
@@ -99,19 +103,19 @@ static void MarkUnusedBonesEH(void *pContext, const SDL_Event *pEvt);
 static void DeleteBonesEH(void *pContext, const SDL_Event *pEvt);
 static void	SkelPopOutEH(void *pContext, const SDL_Event *pEvt);
 static void	AdjustBoneBoundEH(void *pContext, const SDL_Event *pEvt);
-static void	BoxWidthIncreaseEH(void *pContext, const SDL_Event *pEvt);
-static void	BoxWidthDecreaseEH(void *pContext, const SDL_Event *pEvt);
-static void	LengthIncreaseEH(void *pContext, const SDL_Event *pEvt);
-static void	LengthDecreaseEH(void *pContext, const SDL_Event *pEvt);
-static void	BoxDepthIncreaseEH(void *pContext, const SDL_Event *pEvt);
-static void	BoxDepthDecreaseEH(void *pContext, const SDL_Event *pEvt);
-static void	RadiusIncreaseEH(void *pContext, const SDL_Event *pEvt);
-static void	RadiusDecreaseEH(void *pContext, const SDL_Event *pEvt);
+static void	BoxWidthEH(void *pContext, const SDL_Event *pEvt);
+static void	LengthEH(void *pContext, const SDL_Event *pEvt);
+static void	BoxDepthEH(void *pContext, const SDL_Event *pEvt);
+static void	RadiusEH(void *pContext, const SDL_Event *pEvt);
 static void	SnapToJointEH(void *pContext, const SDL_Event *pEvt);
 static void	MirrorEH(void *pContext, const SDL_Event *pEvt);
-static void	MoveForwardEH(void *pContext, const SDL_Event *pEvt);
-static void	MoveBackwardEH(void *pContext, const SDL_Event *pEvt);
+static void	MoveEH(void *pContext, const SDL_Event *pEvt);
 static void	ChangeShapeEH(void *pContext, const SDL_Event *pEvt);
+static void	SelectAllEH(void *pContext, const SDL_Event *pEvt);
+static void	ShiftDownEH(void *pContext, const SDL_Event *pEvt);
+static void	ShiftUpEH(void *pContext, const SDL_Event *pEvt);
+static void	CtrlDownEH(void *pContext, const SDL_Event *pEvt);
+static void	CtrlUpEH(void *pContext, const SDL_Event *pEvt);
 
 
 SkellyEditor	*SKE_Create(StuffKeeper *pSK, GraphicsDevice *pGD,
@@ -149,18 +153,24 @@ SkellyEditor	*SKE_Create(StuffKeeper *pSK, GraphicsDevice *pGD,
 	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_j, SnapToJointEH, pRet);
 	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_m, MirrorEH, pRet);
 	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_COMMA, ChangeShapeEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_f, SelectAllEH, pRet);
 
 	//hold events
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_y, BoxWidthIncreaseEH, pRet);
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_u, BoxWidthDecreaseEH, pRet);
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_i, LengthIncreaseEH, pRet);
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_o, LengthDecreaseEH, pRet);
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_LEFTBRACKET, BoxDepthIncreaseEH, pRet);
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_RIGHTBRACKET, BoxDepthDecreaseEH, pRet);
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_g, RadiusIncreaseEH, pRet);
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_h, RadiusDecreaseEH, pRet);
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_v, MoveForwardEH, pRet);
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_b, MoveBackwardEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_y, BoxWidthEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_u, LengthEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_i, BoxDepthEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_g, RadiusEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_h, MoveEH, pRet);
+
+	//modifiers
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_PRESS, SDLK_LSHIFT, ShiftDownEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_PRESS, SDLK_RSHIFT, ShiftDownEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_RELEASE, SDLK_LSHIFT, ShiftUpEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_RELEASE, SDLK_RSHIFT, ShiftUpEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_PRESS, SDLK_LCTRL, CtrlDownEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_PRESS, SDLK_RCTRL, CtrlDownEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_RELEASE, SDLK_LCTRL, CtrlUpEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_RELEASE, SDLK_RCTRL, CtrlUpEH, pRet);
 
 	return	pRet;
 }
@@ -611,17 +621,17 @@ static void	sMakeInfoString(const SkellyEditor *pSKE)
 	{
 		if(choice == BONE_COL_SHAPE_BOX)
 		{
-			sprintf(sInfoText, "Adjusting bound of %s.  Keys y/u width, i/o length, [] depth, j to snap to joint, v/b to move, or \\ again to finish editing.",
+			sprintf(sInfoText, "Adjusting bound of %s.  Keys y/Y width, u/U length, i/I depth, j/J to snap to joint, h/H to move, or \\ again to finish editing.",
 				utstring_body(pNode->szName));
 		}
 		else if(choice == BONE_COL_SHAPE_SPHERE)
 		{
-			sprintf(sInfoText, "Adjusting bound of %s.  Keys g/h radius, j to snap to joint, v/b to move, or \\ again to finish editing.",
+			sprintf(sInfoText, "Adjusting bound of %s.  Keys g/G radius, j to snap to joint, h/H to move, or \\ again to finish editing.",
 				utstring_body(pNode->szName));
 		}
 		else if(choice == BONE_COL_SHAPE_CAPSULE)
 		{
-			sprintf(sInfoText, "Adjusting bound of %s.  Keys i/o length, g/h radius, j to snap to joint, v/b to move, or \\ again to finish editing.",
+			sprintf(sInfoText, "Adjusting bound of %s.  Keys u/U length, g/G radius, j to snap to joint, h/H to move, or \\ again to finish editing.",
 				utstring_body(pNode->szName));
 		}
 		else
@@ -927,6 +937,31 @@ static void	sSnapAdjust(Skin *pSkin, int boneIdx, float amount)
 	}
 }
 
+static void	sSelectAllBones(SkellyEditor *pSKE, const GSNode *pBone, bool bSelect)
+{
+	BoneDisplayData	*pBDD;
+
+	//see if bone data already exists
+	HASH_FIND_PTR(pSKE->mpBDD, &pBone, pBDD);
+	if(pBDD == NULL)
+	{
+		pBDD	=malloc(sizeof(BoneDisplayData));
+		memset(pBDD, 0, sizeof(BoneDisplayData));
+
+		pBDD->mpNode	=pBone;
+
+		HASH_ADD_PTR(pSKE->mpBDD, mpNode, pBDD);
+	}
+
+	//toggle selected
+	pBDD->mbSelected	=bSelect;
+
+	for(int i=0;i < pBone->mNumChildren;i++)
+	{
+		sSelectAllBones(pSKE, pBone->mpChildren[i], bSelect);
+	}
+}
+
 
 //input event handlers
 static void CollapseBonesEH(void *pContext, const SDL_Event *pEvt)
@@ -945,10 +980,19 @@ static void CollapseBonesEH(void *pContext, const SDL_Event *pEvt)
 
 	BoneDisplayData	*pBDD;
 
-	//toggle collapse on selected and deselect
+	//if shift is held, expand all bones
+	//uncollapse on selected and deselect
 	for(pBDD=pSKE->mpBDD;pBDD != NULL;pBDD=pBDD->hh.next)
 	{
-		if(pBDD->mbSelected)
+		if(pSKE->mShiftHeld > 0)
+		{
+			if(pBDD->mbCollapsed)
+			{
+				pBDD->mbSelected	=pBDD->mbCollapsed	=false;
+				pBDD->mbAnimating	=true;
+			}
+		}
+		else if(pBDD->mbSelected)
 		{
 			pBDD->mbSelected	=false;
 			pBDD->mbCollapsed	=!pBDD->mbCollapsed;
@@ -1049,7 +1093,7 @@ static void	AdjustBoneBoundEH(void *pContext, const SDL_Event *pEvt)
 	}
 }
 
-static void	BoxWidthIncreaseEH(void *pContext, const SDL_Event *pEvt)
+static void	BoxWidthEH(void *pContext, const SDL_Event *pEvt)
 {
 	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
 	assert(pSKE);
@@ -1075,10 +1119,17 @@ static void	BoxWidthIncreaseEH(void *pContext, const SDL_Event *pEvt)
 		return;
 	}
 
-	sWidthAdjust(pSkin, sel, LENGTH_INCREMENT);
+	if(pSKE->mShiftHeld > 0)
+	{
+		sWidthAdjust(pSkin, sel, -LENGTH_INCREMENT);
+	}
+	else
+	{
+		sWidthAdjust(pSkin, sel, LENGTH_INCREMENT);
+	}
 }
 
-static void	BoxWidthDecreaseEH(void *pContext, const SDL_Event *pEvt)
+static void	LengthEH(void *pContext, const SDL_Event *pEvt)
 {
 	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
 	assert(pSKE);
@@ -1104,10 +1155,17 @@ static void	BoxWidthDecreaseEH(void *pContext, const SDL_Event *pEvt)
 		return;
 	}
 
-	sWidthAdjust(pSkin, sel, -LENGTH_INCREMENT);
+	if(pSKE->mShiftHeld > 0)
+	{
+		sLengthAdjust(pSkin, sel, -LENGTH_INCREMENT);
+	}
+	else
+	{
+		sLengthAdjust(pSkin, sel, LENGTH_INCREMENT);
+	}
 }
 
-static void	LengthIncreaseEH(void *pContext, const SDL_Event *pEvt)
+static void	BoxDepthEH(void *pContext, const SDL_Event *pEvt)
 {
 	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
 	assert(pSKE);
@@ -1133,10 +1191,17 @@ static void	LengthIncreaseEH(void *pContext, const SDL_Event *pEvt)
 		return;
 	}
 
-	sLengthAdjust(pSkin, sel, LENGTH_INCREMENT);
+	if(pSKE->mShiftHeld > 0)
+	{
+		sDepthAdjust(pSkin, sel, -LENGTH_INCREMENT);
+	}
+	else
+	{
+		sDepthAdjust(pSkin, sel, LENGTH_INCREMENT);
+	}
 }
 
-static void	LengthDecreaseEH(void *pContext, const SDL_Event *pEvt)
+static void	RadiusEH(void *pContext, const SDL_Event *pEvt)
 {
 	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
 	assert(pSKE);
@@ -1162,123 +1227,14 @@ static void	LengthDecreaseEH(void *pContext, const SDL_Event *pEvt)
 		return;
 	}
 
-	sLengthAdjust(pSkin, sel, -LENGTH_INCREMENT);
-}
-
-static void	BoxDepthIncreaseEH(void *pContext, const SDL_Event *pEvt)
-{
-	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
-	assert(pSKE);
-
-	if(!pSKE->mbAdjustingMode)
+	if(pSKE->mShiftHeld > 0)
 	{
-		return;
+		sRadiusAdjust(pSkin, sel, -RADIUS_INCREMENT);
 	}
-	if(pSKE->mpChar == NULL)
+	else
 	{
-		return;
+		sRadiusAdjust(pSkin, sel, RADIUS_INCREMENT);
 	}
-
-	int	sel	=sGetSingleNodeSelected(pSKE->mpBDD);
-	if(sel == -1)
-	{
-		return;
-	}
-
-	Skin	*pSkin	=Character_GetSkin(pSKE->mpChar);
-	if(pSkin == NULL)
-	{
-		return;
-	}
-
-	sDepthAdjust(pSkin, sel, LENGTH_INCREMENT);
-}
-
-static void	BoxDepthDecreaseEH(void *pContext, const SDL_Event *pEvt)
-{
-	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
-	assert(pSKE);
-
-	if(!pSKE->mbAdjustingMode)
-	{
-		return;
-	}
-	if(pSKE->mpChar == NULL)
-	{
-		return;
-	}
-
-	int	sel	=sGetSingleNodeSelected(pSKE->mpBDD);
-	if(sel == -1)
-	{
-		return;
-	}
-
-	Skin	*pSkin	=Character_GetSkin(pSKE->mpChar);
-	if(pSkin == NULL)
-	{
-		return;
-	}
-
-	sDepthAdjust(pSkin, sel, -LENGTH_INCREMENT);
-}
-
-static void	RadiusIncreaseEH(void *pContext, const SDL_Event *pEvt)
-{
-	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
-	assert(pSKE);
-
-	if(!pSKE->mbAdjustingMode)
-	{
-		return;
-	}
-	if(pSKE->mpChar == NULL)
-	{
-		return;
-	}
-
-	int	sel	=sGetSingleNodeSelected(pSKE->mpBDD);
-	if(sel == -1)
-	{
-		return;
-	}
-
-	Skin	*pSkin	=Character_GetSkin(pSKE->mpChar);
-	if(pSkin == NULL)
-	{
-		return;
-	}
-
-	sRadiusAdjust(pSkin, sel, RADIUS_INCREMENT);
-}
-
-static void	RadiusDecreaseEH(void *pContext, const SDL_Event *pEvt)
-{
-	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
-	assert(pSKE);
-
-	if(!pSKE->mbAdjustingMode)
-	{
-		return;
-	}
-	if(pSKE->mpChar == NULL)
-	{
-		return;
-	}
-
-	int	sel	=sGetSingleNodeSelected(pSKE->mpBDD);
-	if(sel == -1)
-	{
-		return;
-	}
-
-	Skin	*pSkin	=Character_GetSkin(pSKE->mpChar);
-	if(pSkin == NULL)
-	{
-		return;
-	}
-
-	sRadiusAdjust(pSkin, sel, -RADIUS_INCREMENT);
 }
 
 static void	SnapToJointEH(void *pContext, const SDL_Event *pEvt)
@@ -1383,7 +1339,7 @@ static void	MirrorEH(void *pContext, const SDL_Event *pEvt)
 	}
 }
 
-static void	MoveForwardEH(void *pContext, const SDL_Event *pEvt)
+static void	MoveEH(void *pContext, const SDL_Event *pEvt)
 {
 	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
 	assert(pSKE);
@@ -1409,36 +1365,14 @@ static void	MoveForwardEH(void *pContext, const SDL_Event *pEvt)
 		return;
 	}
 
-	sMoveAdjust(pSkin, sel, RADIUS_INCREMENT);
-}
-
-static void	MoveBackwardEH(void *pContext, const SDL_Event *pEvt)
-{
-	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
-	assert(pSKE);
-
-	if(!pSKE->mbAdjustingMode)
+	if(pSKE->mShiftHeld > 0)
 	{
-		return;
+		sMoveAdjust(pSkin, sel, -RADIUS_INCREMENT);
 	}
-	if(pSKE->mpChar == NULL)
+	else
 	{
-		return;
+		sMoveAdjust(pSkin, sel, RADIUS_INCREMENT);
 	}
-
-	int	sel	=sGetSingleNodeSelected(pSKE->mpBDD);
-	if(sel == -1)
-	{
-		return;
-	}
-
-	Skin	*pSkin	=Character_GetSkin(pSKE->mpChar);
-	if(pSkin == NULL)
-	{
-		return;
-	}
-
-	sMoveAdjust(pSkin, sel, -RADIUS_INCREMENT);
 }
 
 static void	ChangeShapeEH(void *pContext, const SDL_Event *pEvt)
@@ -1492,4 +1426,60 @@ static void	ChangeShapeEH(void *pContext, const SDL_Event *pEvt)
 	}
 
 	Skin_SetBoundChoice(pSkin, pNode->mIndex, choice);
+}
+
+static void	SelectAllEH(void *pContext, const SDL_Event *pEvt)
+{
+	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
+	assert(pSKE);
+
+	if(pSKE->mbAdjustingMode)
+	{
+		return;
+	}
+	if(pSKE->mpALib == NULL)
+	{
+		return;
+	}
+
+	const Skeleton	*pSkel	=AnimLib_GetSkeleton(pSKE->mpALib);
+
+	for(int i=0;i < pSkel->mNumRoots;i++)
+	{
+		sSelectAllBones(pSKE, pSkel->mpRoots[i], (pSKE->mShiftHeld <= 0));
+	}
+}
+
+
+//modifiers
+static void	ShiftDownEH(void *pContext, const SDL_Event *pEvt)
+{
+	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
+	assert(pSKE);
+
+	pSKE->mShiftHeld++;
+}
+
+static void	ShiftUpEH(void *pContext, const SDL_Event *pEvt)
+{
+	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
+	assert(pSKE);
+
+	pSKE->mShiftHeld--;
+}
+
+static void	CtrlDownEH(void *pContext, const SDL_Event *pEvt)
+{
+	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
+	assert(pSKE);
+
+	pSKE->mCtrlHeld++;
+}
+
+static void	CtrlUpEH(void *pContext, const SDL_Event *pEvt)
+{
+	SkellyEditor	*pSKE	=(SkellyEditor *)pContext;
+	assert(pSKE);
+
+	pSKE->mCtrlHeld--;
 }
