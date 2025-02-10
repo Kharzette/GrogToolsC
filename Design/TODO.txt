@@ -21,6 +21,11 @@ x	Checkbox or key toggle off axis draw
 no	Keys to change size of axis
 x	key to expand all bones in skellyeeditir
 x	toggle select all bones
+	Togglable F1 help screen
+	Raycast mode
+x		Random ray direction key
+x		Draw ray kinda like light ray but skinnier
+		Draw impacted shapes in red or something?
 	Basic collision shape editing / display
 	Don't copy alpha channel for SRV (clearer image)
 	Fix memleaks!

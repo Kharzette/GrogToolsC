@@ -26,6 +26,7 @@
 #include	"MeshLib/Skin.h"
 #include	"InputLib/Input.h"
 #include	"SkellyEditor.h"
+#include	"RayCaster.h"
 
 
 #define	RESX			1280
@@ -101,8 +102,9 @@ typedef struct AppContext_t
 	Clay_Vector2	mScrollDelta;
 	Clay_Vector2	mMousePos;
 
-	//skelly editor
+	//extra gumpage
 	SkellyEditor	*mpSKE;
+	RayCaster		*mpRC;
 
 	//projection matrices
 	mat4	mCamProj, mTextProj;
@@ -653,9 +655,10 @@ static AppContext	*sAppCreate(void)
     Clay_Initialize(clayMemory, (Clay_Dimensions) { (float)RESX, (float)RESY }, (Clay_ErrorHandler) { sHandleClayErrors });
     Clay_SetMeasureTextFunction(UI_MeasureText, pApp->mpUI);
 
-	Clay_SetDebugModeEnabled(true);
+	Clay_SetDebugModeEnabled(false);
 
 	pApp->mpSKE	=SKE_Create(pApp->mpSK, pApp->mpGD, pApp->mpCBK, pApp->mpInp);
+	pApp->mpRC	=RC_Create(pApp->mpSK, pApp->mpGD, pApp->mpCBK, pApp->mpInp);
 
 	pApp->mbRunning		=true;
 	pApp->mbDrawAxis	=true;
@@ -671,6 +674,7 @@ static void	sAppDestroy(AppContext **ppApp)
 	sSaveWindowPositions(pAC);
 
 	SKE_Destroy(&pAC->mpSKE);
+	RC_Destroy(&pAC->mpRC);
 
 	GD_Destroy(&pAC->mpGD);
 
@@ -766,6 +770,9 @@ static void sRender(AppContext *pApp, const real64_t prTime, const real64_t cTim
 	//draw collision shapes if needed
 	SKE_RenderShapes(pApp->mpSKE, pApp->mLightDir);
 
+	//ray stuff
+	RC_Render(pApp->mpRC);
+
 	//set proj for 2D
 	CBK_SetProjection(pApp->mpCBK, pApp->mTextProj);
 	CBK_UpdateFrame(pApp->mpCBK, pApp->mpGD);
@@ -817,6 +824,7 @@ static void sAppUpdate(AppContext *pApp, const real64_t prTime, const real64_t c
 	}
 
 	SKE_Update(pApp->mpSKE, TIC_RATE);
+	RC_Update(pApp->mpRC, TIC_RATE);
 
 	pApp->mAnimTime		=cTime;
 	pApp->mDeltaYaw		=0.0f;
@@ -1145,8 +1153,9 @@ static void sLoadCharacter(AppContext *pAC, Event *pEvt)
 
 	pAC->mpChar	=Character_Read(pFileName);
 
-	//pass along to skelly editor
+	//pass along to other gumps
 	SKE_SetCharacter(pAC->mpSKE, pAC->mpChar);
+	RC_SetCharacter(pAC->mpRC, pAC->mpChar);
 
 	printf("Character loaded...\n");
 
@@ -1266,6 +1275,9 @@ static void sLoadStatic(AppContext *pAC, Event *pEvt)
 	pAC->mpStatic	=Static_Read(pFileName);
 
 	printf("Static loaded...\n");
+
+	//pass along to gumps
+	RC_SetStatic(pAC->mpRC, pAC->mpStatic);
 
 	StringList	*pParts	=Static_GetPartList(pAC->mpStatic);
 
@@ -1422,8 +1434,9 @@ static void sLoadAnimLib(AppContext *pAC, Event *pEvt)
 
 	pAC->mpALib	=AnimLib_Read(pFileName);
 
-	//pass along to skelly editor
+	//pass along to gumps
 	SKE_SetAnimLib(pAC->mpSKE, pAC->mpALib);
+	RC_SetAnimLib(pAC->mpRC, pAC->mpALib);
 
 	pAC->mpAnimList	=AnimLib_GetAnimList(pAC->mpALib);
 
@@ -2260,6 +2273,7 @@ static Clay_RenderCommandArray sCreateLayout(AppContext *pApp)
 	Clay_BeginLayout();
 	
 	SKE_MakeClayLayout(pApp->mpSKE);
+	RC_MakeClayLayout(pApp->mpRC);
 
 	return Clay_EndLayout();
 }

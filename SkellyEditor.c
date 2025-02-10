@@ -148,7 +148,7 @@ SkellyEditor	*SKE_Create(StuffKeeper *pSK, GraphicsDevice *pGD,
 	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_c, CollapseBonesEH, pRet);	//collapse/uncollapse selected bones
 	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_n, MarkUnusedBonesEH, pRet);	//mark bones that aren't used in vert weights
 	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_DELETE, DeleteBonesEH, pRet);	//nuke selected bones
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_p, SkelPopOutEH, pRet);		//pop outsidebar
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_F2, SkelPopOutEH, pRet);		//pop outsidebar
 	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_BACKSLASH, AdjustBoneBoundEH, pRet);
 	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_j, SnapToJointEH, pRet);
 	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_m, MirrorEH, pRet);
