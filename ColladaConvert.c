@@ -27,6 +27,7 @@
 #include	"InputLib/Input.h"
 #include	"SkellyEditor.h"
 #include	"RayCaster.h"
+#include	"glTFFile.h"
 
 
 #define	RESX			1280
@@ -180,6 +181,7 @@ static void EscEH(void *pContext, const SDL_Event *pEvt);
 static void AxisEH(void *pContext, const SDL_Event *pEvt);
 
 //button event handlers
+static void sLoadGLTF(AppContext *pAC, Event *pEvt);
 static void sLoadCharacter(AppContext *pAC, Event *pEvt);
 static void sSaveCharacter(AppContext *pAC, Event *pEvt);
 static void sLoadStatic(AppContext *pAC, Event *pEvt);
@@ -465,10 +467,11 @@ static AppContext	*sAppCreate(void)
 	layout_margin(pLay, 10);
 
 	//sublayouts for save / load buttons
-	Layout	*pSavLoadMeshLay	=layout_create(2, 2);
+	Layout	*pSavLoadMeshLay	=layout_create(2, 3);
 	Layout	*pSavLoadMatLay		=layout_create(1, 2);
 	Layout	*pSavLoadAnimLay	=layout_create(1, 2);
 
+	Button	*pLGLTF		=button_push();
 	Button	*pLChar		=button_push();
 	Button	*pSChar		=button_push();
 	Button	*pLMat		=button_push();
@@ -480,6 +483,7 @@ static AppContext	*sAppCreate(void)
 	Button	*pAssMat	=button_push();
 	pApp->mpMatStuff	=button_push();
 
+	button_text(pLGLTF, "Load glb");
 	button_text(pLChar, "Load Character");
 	button_text(pSChar, "Save Character");
 	button_text(pLStat, "Load Static");
@@ -503,8 +507,9 @@ static AppContext	*sAppCreate(void)
 	layout_layout(pLay, pSavLoadAnimLay, 2, 0);
 
 	//put the buttons within sublayouts
-	layout_button(pSavLoadMeshLay, pLChar, 0, 0);
-	layout_button(pSavLoadMeshLay, pSChar, 0, 1);
+	layout_button(pSavLoadMeshLay, pLGLTF, 0, 0);
+	layout_button(pSavLoadMeshLay, pLChar, 0, 1);
+	layout_button(pSavLoadMeshLay, pSChar, 0, 2);
 	layout_button(pSavLoadMeshLay, pLStat, 1, 0);
 	layout_button(pSavLoadMeshLay, pSStat, 1, 1);
 
@@ -532,6 +537,7 @@ static AppContext	*sAppCreate(void)
 
 	layout_edit(pEditLay, pApp->mpTextInput, 0, 0);
 
+	button_OnClick(pLGLTF, listener(pApp, sLoadGLTF, AppContext));
 	button_OnClick(pLChar, listener(pApp, sLoadCharacter, AppContext));
 	button_OnClick(pSChar, listener(pApp, sSaveCharacter, AppContext));
 	button_OnClick(pLStat, listener(pApp, sLoadStatic, AppContext));
@@ -1130,6 +1136,39 @@ static void	AxisEH(void *pContext, const SDL_Event *pEvt)
 	pTS->mbDrawAxis	=!pTS->mbDrawAxis;
 }
 
+
+static void sLoadGLTF(AppContext *pAC, Event *pEvt)
+{
+	unref(pEvt);
+
+	const char	*fTypes[]	={	"gltf", "glb",	};
+
+	const char	*pFileName	=comwin_open_file(pAC->mpWnd, fTypes, 2, NULL);
+	if(pFileName == NULL)
+	{
+		printf("Empty filename for Load.\n");
+		return;
+	}
+
+	printf("glTF load fileName: %s\n", pFileName);
+
+	if(pAC->mpChar != NULL)
+	{
+		Character_Destroy(pAC->mpChar);
+	}
+
+	GLTFFile	*pGF;
+
+	UT_string	*pExt	=SZ_GetExtension(pFileName);
+	if(0 == strncmp(utstring_body(pExt), "glb", 3))
+	{
+		pGF	=GLTF_CreateFromGLB(pFileName);
+	}
+	else
+	{
+		pGF	=GLTF_Create(pFileName);
+	}
+}
 
 static void sLoadCharacter(AppContext *pAC, Event *pEvt)
 {
