@@ -484,7 +484,7 @@ static AppContext	*sAppCreate(void)
 	Button	*pAssMat	=button_push();
 	pApp->mpMatStuff	=button_push();
 
-	button_text(pLGLTF, "Load glb");
+	button_text(pLGLTF, "Load gltf / glb");
 	button_text(pLChar, "Load Character");
 	button_text(pSChar, "Save Character");
 	button_text(pLStat, "Load Static");
