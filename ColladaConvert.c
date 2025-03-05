@@ -28,6 +28,7 @@
 #include	"SkellyEditor.h"
 #include	"RayCaster.h"
 #include	"glTFFile.h"
+#include	"glTFConvert.h"
 
 
 #define	RESX			1280
@@ -1168,6 +1169,8 @@ static void sLoadGLTF(AppContext *pAC, Event *pEvt)
 	{
 		pGF	=GLTF_Create(pFileName);
 	}
+
+	Character	*pChar	=GLCV_ExtractCharacter(pGF);
 }
 
 static void sLoadCharacter(AppContext *pAC, Event *pEvt)
