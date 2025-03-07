@@ -1170,7 +1170,7 @@ static void sLoadGLTF(AppContext *pAC, Event *pEvt)
 		pGF	=GLTF_Create(pFileName);
 	}
 
-	Character	*pChar	=GLCV_ExtractCharacter(pGF);
+	Character	*pChar	=GLCV_ExtractCharacter(pAC->mpGD, pAC->mpSK, pGF);
 }
 
 static void sLoadCharacter(AppContext *pAC, Event *pEvt)

@@ -5,9 +5,14 @@
 #include	<stdint.h>
 #include	<stdbool.h>
 #include	"UtilityLib/StringStuff.h"
+#include	"UtilityLib/GraphicsDevice.h"
+#include	"UtilityLib/MiscStuff.h"
 #include	"MeshLib/Character.h"
 #include	"MeshLib/GSNode.h"
 #include	"MeshLib/Skin.h"
+#include	"MeshLib/Mesh.h"
+#include	"MaterialLib/Layouts.h"
+#include	"MaterialLib/StuffKeeper.h"
 #include	<json-c/json_tokener.h>
 #include	<json-c/json_object.h>
 #include	<json-c/json_object_iterator.h>
@@ -23,12 +28,34 @@
 #define	TYPE_MAT3	5
 #define	TYPE_MAT4	6
 
+#define	CTYPE_BYTE		5120
+#define	CTYPE_UBYTE		5121
+#define	CTYPE_SHORT		5122
+#define	CTYPE_USHORT	5123
+#define	CTYPE_UINT		5125
+#define	CTYPE_FLOAT		5126
+
 
 typedef struct	GLTFFile_t
 {
 	struct json_object	*mpJSON;
 	uint8_t				*mpBinChunk;
+
+	//vert format data
+	int	*mpElements;
+	int	*mpElAccess;
+	int	mNumElements;
+
 }	GLTFFile;
+
+typedef struct	VertFormat_t
+{
+	//vert format data
+	int	*mpElements;
+	int	*mpElAccess;
+	int	mNumElements;
+
+}	VertFormat;
 
 typedef struct	Accessor_t
 {
@@ -226,8 +253,6 @@ static Accessor	*sReadAccessors(const struct json_object *pAcc)
 
 	for(int i=0;i < numAcc;i++)
 	{
-		UT_string	*pName	=NULL;
-
 		printf("Accessor %d\n", i);
 
 		const struct json_object	*pArr	=json_object_array_get_idx(pAcc, i);
@@ -272,7 +297,7 @@ static Accessor	*sReadAccessors(const struct json_object *pAcc)
 			{
 				assert(t == json_type_string);
 
-				char	*pType	=json_object_get_string(pVal);
+				const char	*pType	=json_object_get_string(pVal);
 
 				if(0 == strncmp("SCALAR", pType, 6))
 				{
@@ -326,8 +351,6 @@ static BufferView	*sGetBufferViews(const struct json_object *pBV)
 
 	for(int i=0;i < numBV;i++)
 	{
-		UT_string	*pName	=NULL;
-
 		printf("BufferView %d\n", i);
 
 		const struct json_object	*pArr	=json_object_array_get_idx(pBV, i);
@@ -390,13 +413,13 @@ static mat4	*sGetIBP(const uint8_t *pBin, const Accessor *pAcc,
 }
 
 static Skin	*sMakeSkins(const struct json_object *pSkins,
-						const uint8_t *pBin, const Accessor *pAccs,
-						const BufferView *pBVs)
+	const uint8_t *pBin, const Accessor *pAccs,
+	const BufferView *pBVs)
 {
 	int	numSkins	=json_object_array_length(pSkins);
-
+	
 	assert(numSkins == 1);
-
+	
 	Skin	*pRet	=NULL;
 	
 //	GSNode	*pGNs	=malloc(sizeof(GSNode) * numNodes);
@@ -407,11 +430,11 @@ static Skin	*sMakeSkins(const struct json_object *pSkins,
 		UT_string	*pName			=NULL;
 		int			*pJoints		=NULL;
 		mat4		*pIBPs			=NULL;
-
+		
 		printf("Skin %d\n", i);
-
+		
 		const struct json_object	*pArr	=json_object_array_get_idx(pSkins, i);
-
+		
 		json_object_object_foreach(pArr, pKey, pVal)
 		{
 			enum json_type	t	=json_object_get_type(pVal);
@@ -421,44 +444,396 @@ static Skin	*sMakeSkins(const struct json_object *pSkins,
 			if(0 == strncmp("inverseBindMatrices", pKey, 19))
 			{
 				assert(t == json_type_int);
-
+				
 				ibmAccessIndex	=json_object_get_int(pVal);
-
+				
 				pIBPs	=sGetIBP(pBin, &pAccs[ibmAccessIndex], pBVs);
 			}
 			else if(0 == strncmp("joints", pKey, 19))
 			{
 				assert(t == json_type_array);
-
+				
 				int	jarrLen	=json_object_array_length(pVal);
-
+				
+				
 				pJoints	=malloc(sizeof(int) * jarrLen);
-
+				
 				for(int j=0;j < jarrLen;j++)
 				{
 					const struct json_object	*pJIdx	=
 						json_object_array_get_idx(pVal, j);
-
+						
 					pJoints[j]	=json_object_get_int(pJIdx);
 				}
 			}
 			else if(0 == strncmp("name", pKey, 4))
 			{
 				assert(t == json_type_string);
-
+				
 				utstring_new(pName);
-
+				
 				utstring_printf(pName, "%s", json_object_get_string(pVal));
 			}
 		}
 		pRet	=Skin_Create(pIBPs, pAccs[ibmAccessIndex].mCount);
 	}
+	
+	return	pRet;
+}
 
+static ID3D11InputLayout	*sGuessLayout(const StuffKeeper *pSK,
+	const struct json_object *pVAttr, VertFormat *pVF)
+{
+	int	numElems	=0;
+
+	//count up how many vertex elements
+	json_object_object_foreach(pVAttr, pCountKey, pCountVal)
+	{
+		numElems++;
+	}
+
+	//save discovered vert format details to the struct
+	pVF->mpElements		=malloc(sizeof(int) * numElems);
+	pVF->mpElAccess		=malloc(sizeof(int) * numElems);
+	pVF->mNumElements	=numElems;
+
+	int	elIdx	=0;
+	json_object_object_foreach(pVAttr, pKey, pVal)
+	{
+		enum json_type	t	=json_object_get_type(pVal);
+
+		assert(t == json_type_int);
+
+		//accessor index
+		pVF->mpElAccess[elIdx]	=json_object_get_int(pVal);
+
+		if(0 == strncmp("POSITION", pKey, 8))
+		{
+			pVF->mpElements[elIdx]	=EL_POSITION;
+		}
+		else if(0 == strncmp("NORMAL", pKey, 6))
+		{
+			pVF->mpElements[elIdx]	=EL_NORMAL;
+		}
+		else if(0 == strncmp("TANGENT", pKey, 7))
+		{
+			pVF->mpElements[elIdx]	=EL_TANGENT;
+		}
+		else if(0 == strncmp("TEXCOORD", pKey, 8))
+		{
+			pVF->mpElements[elIdx]	=EL_TEXCOORD;
+		}
+		else if(0 == strncmp("COLOR", pKey, 5))
+		{
+			pVF->mpElements[elIdx]	=EL_COLOR;
+		}
+		else if(0 == strncmp("JOINTS", pKey, 6))
+		{
+			pVF->mpElements[elIdx]	=EL_BINDICES;
+		}
+		else if(0 == strncmp("WEIGHTS", pKey, 7))
+		{
+			pVF->mpElements[elIdx]	=EL_BWEIGHTS;
+		}
+
+		elIdx++;
+	}
+
+	return	StuffKeeper_FindMatch(pSK, pVF->mpElements, numElems);
+}
+
+static int	sSizeForCompType(int compType)
+{
+	int	compSize	=-1;
+
+	switch(compType)
+	{
+		case	CTYPE_BYTE:
+		case	CTYPE_UBYTE:
+			compSize	=1;
+			break;
+		case	CTYPE_SHORT:
+		case	CTYPE_USHORT:
+			compSize	=2;
+			break;
+		case	CTYPE_UINT:
+		case	CTYPE_FLOAT:
+			compSize	=4;
+			break;
+		default:
+			assert(false);
+	}
+	return	compSize;
+}
+
+static int	sSizeForVType(int vType)
+{
+	int	typeSize	=-1;
+
+	switch(vType)
+	{
+		case	TYPE_MAT2:
+			typeSize	=4;
+			break;
+		case	TYPE_MAT3:
+			typeSize	=9;
+			break;
+		case	TYPE_MAT4:
+			typeSize	=16;
+			break;
+		case	TYPE_SCALAR:
+			typeSize	=1;
+			break;
+		case	TYPE_VEC2:
+			typeSize	=2;
+			break;
+		case	TYPE_VEC3:
+			typeSize	=3;
+			break;
+		case	TYPE_VEC4:
+			typeSize	=4;
+			break;
+		default:
+			assert(false);
+	}
+	return	typeSize;
+}
+
+static int	sSizeForAccType(const Accessor *pAcc)
+{
+	int	compSize	=sSizeForCompType(pAcc->mComponentType);
+
+	int	typeSize	=sSizeForVType(pAcc->mType);
+
+	return	compSize * typeSize;
+}
+
+static void	sMakeVBDesc(D3D11_BUFFER_DESC *pDesc, uint32_t byteSize)
+{
+	memset(pDesc, 0, sizeof(D3D11_BUFFER_DESC));
+
+	pDesc->BindFlags			=D3D11_BIND_VERTEX_BUFFER;
+	pDesc->ByteWidth			=byteSize;
+	pDesc->CPUAccessFlags		=DXGI_CPU_ACCESS_NONE;
+	pDesc->MiscFlags			=0;
+	pDesc->StructureByteStride	=0;
+	pDesc->Usage				=D3D11_USAGE_IMMUTABLE;
+}
+
+
+static ID3D11Buffer	*sMakeMeshVB(GraphicsDevice *pGD,
+	const VertFormat *pVF, const BufferView *pBVs,
+	const Accessor *pAccs, const uint8_t *pBin)
+{
+	//calc total size of the buffer needed
+	int	vSize	=0;
+	for(int i=0;i < pVF->mNumElements;i++)
+	{
+		int	acc	=pVF->mpElAccess[i];
+
+		vSize	+=sSizeForAccType(&pAccs[acc]);
+	}
+
+	//grab element zero's count
+	int	count	=pAccs[pVF->mpElAccess[0]].mCount;
+
+	//ensure all elements have the same count
+	for(int i=0;i < pVF->mNumElements;i++)
+	{
+		int	acc	=pVF->mpElAccess[i];
+
+		assert(pAccs[acc].mCount == count);
+	}
+
+	int	totalSize	=count * vSize;
+
+	//do some basic checks on sizes
+	for(int i=0;i < pVF->mNumElements;i++)
+	{
+		int	acc	=pVF->mpElAccess[i];
+		int	bv	=pAccs[acc].mBufferView;
+
+		assert(pBVs[bv].mBufIdx == 0);
+
+		int	elSize	=sSizeForAccType(&pAccs[acc]);
+
+		assert(pBVs[bv].mByteLength == (elSize * count));
+	}
+
+	int	grogSizes[pVF->mNumElements];
+
+	Layouts_GetGrogSizes(pVF->mpElements, grogSizes, pVF->mNumElements);
+
+	int	gTotal	=0;
+
+	//alloc temp space for squishing elements if needed
+	void *pSquishSpace[pVF->mNumElements];
+	for(int i=0;i < pVF->mNumElements;i++)
+	{
+		pSquishSpace[i]	=malloc(grogSizes[i] * count);
+		gTotal			+=grogSizes[i];
+	}
+
+	for(int i=0;i < pVF->mNumElements;i++)
+	{
+		int	acc		=pVF->mpElAccess[i];
+		int	bv		=pAccs[acc].mBufferView;
+		int	glSize	=sSizeForAccType(&pAccs[acc]);
+		int	gSize	=grogSizes[i];
+		int	ofs		=pBVs[bv].mByteOffset;
+		int	elTotal	=pBVs[bv].mByteLength;
+		int	cSize	=sSizeForCompType(pAccs[acc].mComponentType);
+
+		if(glSize == gSize)
+		{
+			memcpy(pSquishSpace[i], &pBin[ofs], elTotal);
+			continue;
+		}
+
+		for(int j=0;j < count;j++)
+		{
+			switch(pAccs[acc].mType)
+			{
+				case	TYPE_VEC2:
+					Misc_ConvertVec2ToF16((const float *)&pBin[ofs + (j * glSize)],
+						pSquishSpace[i] + (j * gSize));
+				break;
+				case	TYPE_VEC3:
+					Misc_ConvertVec3ToF16((const float *)&pBin[ofs + (j * glSize)],
+						pSquishSpace[i] + (j * gSize));
+					break;
+				case	TYPE_VEC4:
+					Misc_ConvertVec4ToF16((const float *)&pBin[ofs + (j * glSize)],
+						pSquishSpace[i] + (j * gSize));
+					break;
+				default:
+					assert(false);
+			}
+		}
+	}
+
+	//ram for the assembled verts
+	void	*pVerts	=malloc(gTotal * count);
+
+	//assemble one at a time... PainPeko
+	for(int j=0;j < count;j++)
+	{
+		int	ofs		=0;
+		for(int i=0;i < pVF->mNumElements;i++)
+		{
+			int	gSize	=grogSizes[i];
+
+			//copy squished elements
+			memcpy((pVerts + (j * gTotal) + ofs),
+				pSquishSpace[i] + (j * gSize), gSize);
+
+			ofs	+=gSize;
+		}
+	}
+
+	D3D11_BUFFER_DESC	bufDesc;
+	sMakeVBDesc(&bufDesc, totalSize);
+
+	return	GD_CreateBufferWithData(pGD, &bufDesc, pVerts, totalSize);
+}
+
+static Mesh	*sMakeMeshes(GraphicsDevice *pGD,
+	const StuffKeeper *pSK,
+	const struct json_object *pMeshes,
+	const uint8_t *pBin, const Accessor *pAccs,
+	const BufferView *pBVs)
+{
+	int	numMeshes	=json_object_array_length(pMeshes);
+	
+	assert(numMeshes == 1);
+	
+	Mesh	*pRet	=NULL;
+	
+	//	GSNode	*pGNs	=malloc(sizeof(GSNode) * numNodes);
+	
+	for(int i=0;i < numMeshes;i++)
+	{
+		int			indAccessIndex	=-1;
+		UT_string	*pName			=NULL;
+		int			matIndex		=-1;		
+
+		//this will be matched from vert attributes
+		ID3D11InputLayout	*pLay	=NULL;
+
+		//the returned matched vert format
+		VertFormat	*pVF	=malloc(sizeof(VertFormat));
+		
+		printf("Mesh %d\n", i);
+		
+		const struct json_object	*pArr	=json_object_array_get_idx(pMeshes, i);
+		
+		json_object_object_foreach(pArr, pKey, pVal)
+		{
+			enum json_type	t	=json_object_get_type(pVal);
+			printf("KeyValue: %s : %s,%s\n", pKey, json_type_to_name(t),
+				json_object_get_string(pVal));
+			
+			if(0 == strncmp("primitives", pKey, 10))
+			{
+				assert(t == json_type_array);
+
+				const struct json_object	*pAtArr	=json_object_array_get_idx(pVal, 0);
+
+				//in my test data this has vert attributes,
+				//and an indices int, and a materal int
+				json_object_object_foreach(pAtArr, pPrimKey, pPrimVal)
+				{
+					enum json_type	tprim	=json_object_get_type(pPrimVal);
+					printf("AttrKeyValue: %s : %s,%s\n", pPrimKey,
+						json_type_to_name(tprim),
+						json_object_get_string(pPrimVal));
+
+					if(0 == strncmp("attributes", pPrimKey, 10))
+					{
+						assert(tprim == json_type_object);
+
+						pLay	=sGuessLayout(pSK, pPrimVal, pVF);
+						if(pLay == NULL)
+						{
+							printf("No match for vertex format!\n");
+							return	NULL;
+						}
+					}
+					else if(0 == strncmp("indices", pPrimKey, 7))
+					{
+						assert(tprim == json_type_int);
+
+						indAccessIndex	=json_object_get_int(pPrimVal);
+					}
+					else if(0 == strncmp("material", pPrimKey, 8))
+					{
+						assert(tprim == json_type_int);
+
+						matIndex	=json_object_get_int(pPrimVal);
+					}
+				}
+			}
+			else if(0 == strncmp("name", pKey, 4))
+			{
+				assert(t == json_type_string);
+				
+				utstring_new(pName);
+				
+				utstring_printf(pName, "%s", json_object_get_string(pVal));
+			}
+		}
+
+		ID3D11Buffer	*pVB	=sMakeMeshVB(pGD, pVF, pBVs, pAccs, pBin);
+
+
+	}
+	
 	return	pRet;
 }
 
 
-Character	*GLCV_ExtractCharacter(const GLTFFile *pGF)
+Character	*GLCV_ExtractCharacter(GraphicsDevice *pGD,
+	const StuffKeeper *pSK, const GLTFFile *pGF)
 {
 	assert(pGF != NULL);
 
@@ -517,4 +892,12 @@ Character	*GLCV_ExtractCharacter(const GLTFFile *pGF)
 
 	Skin	*pSkin	=sMakeSkins(pSkins, pGF->mpBinChunk, pAcs, pBVs);
 
+	const struct json_object	*pMeshes	=json_object_object_get(pGF->mpJSON, "meshes");
+	if(pMeshes == NULL)
+	{
+		printf("gltf has no meshes.\n");
+		return	NULL;
+	}
+
+	Mesh	*pMesh	=sMakeMeshes(pGD, pSK, pMeshes, pGF->mpBinChunk, pAcs, pBVs);
 }
