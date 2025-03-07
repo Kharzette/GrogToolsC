@@ -2,7 +2,6 @@ CC=gcc
 CFLAGS=-std=gnu2x -g -O0 -march=native				\
 	-DCGLM_FORCE_DEPTH_ZERO_TO_ONE					\
 	-DCGLM_FORCE_LEFT_HANDED						\
-	-IGrogLibsC/SDL/include							\
 	-IGrogLibsC/uthash/src							\
 	-IGrogLibsC/dxvk-native/include/native/windows	\
 	-IGrogLibsC/dxvk-native/include/native/directx	\
