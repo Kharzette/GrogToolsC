@@ -8,6 +8,7 @@
 #include	"UtilityLib/GraphicsDevice.h"
 #include	"UtilityLib/MiscStuff.h"
 #include	"MeshLib/Character.h"
+#include	"MeshLib/Static.h"
 #include	"MeshLib/GSNode.h"
 #include	"MeshLib/Skin.h"
 #include	"MeshLib/Mesh.h"
@@ -608,22 +609,11 @@ static int	sSizeForAccType(const Accessor *pAcc)
 	return	compSize * typeSize;
 }
 
-static void	sMakeVBDesc(D3D11_BUFFER_DESC *pDesc, uint32_t byteSize)
-{
-	memset(pDesc, 0, sizeof(D3D11_BUFFER_DESC));
-
-	pDesc->BindFlags			=D3D11_BIND_VERTEX_BUFFER;
-	pDesc->ByteWidth			=byteSize;
-	pDesc->CPUAccessFlags		=DXGI_CPU_ACCESS_NONE;
-	pDesc->MiscFlags			=0;
-	pDesc->StructureByteStride	=0;
-	pDesc->Usage				=D3D11_USAGE_IMMUTABLE;
-}
-
-
-static ID3D11Buffer	*sMakeMeshVB(GraphicsDevice *pGD,
+//return numVerts, vertSize, and pointer to Data
+static void	*sMakeMeshData(GraphicsDevice *pGD,
 	const VertFormat *pVF, const BufferView *pBVs,
-	const Accessor *pAccs, const uint8_t *pBin)
+	const Accessor *pAccs, const uint8_t *pBin,
+	int *pNumVerts, int *pVertSize)
 {
 	//calc total size of the buffer needed
 	int	vSize	=0;
@@ -635,17 +625,17 @@ static ID3D11Buffer	*sMakeMeshVB(GraphicsDevice *pGD,
 	}
 
 	//grab element zero's count
-	int	count	=pAccs[pVF->mpElAccess[0]].mCount;
+	*pNumVerts	=pAccs[pVF->mpElAccess[0]].mCount;
 
 	//ensure all elements have the same count
 	for(int i=0;i < pVF->mNumElements;i++)
 	{
 		int	acc	=pVF->mpElAccess[i];
 
-		assert(pAccs[acc].mCount == count);
+		assert(pAccs[acc].mCount == *pNumVerts);
 	}
 
-	int	totalSize	=count * vSize;
+	int	totalSize	=*pNumVerts * vSize;
 
 	//do some basic checks on sizes
 	for(int i=0;i < pVF->mNumElements;i++)
@@ -657,21 +647,21 @@ static ID3D11Buffer	*sMakeMeshVB(GraphicsDevice *pGD,
 
 		int	elSize	=sSizeForAccType(&pAccs[acc]);
 
-		assert(pBVs[bv].mByteLength == (elSize * count));
+		assert(pBVs[bv].mByteLength == (elSize * *pNumVerts));
 	}
 
 	int	grogSizes[pVF->mNumElements];
 
 	Layouts_GetGrogSizes(pVF->mpElements, grogSizes, pVF->mNumElements);
 
-	int	gTotal	=0;
+	*pVertSize	=0;
 
 	//alloc temp space for squishing elements if needed
 	void *pSquishSpace[pVF->mNumElements];
 	for(int i=0;i < pVF->mNumElements;i++)
 	{
-		pSquishSpace[i]	=malloc(grogSizes[i] * count);
-		gTotal			+=grogSizes[i];
+		pSquishSpace[i]	=malloc(grogSizes[i] * *pNumVerts);
+		*pVertSize	+=grogSizes[i];
 	}
 
 	for(int i=0;i < pVF->mNumElements;i++)
@@ -690,7 +680,10 @@ static ID3D11Buffer	*sMakeMeshVB(GraphicsDevice *pGD,
 			continue;
 		}
 
-		for(int j=0;j < count;j++)
+		//I think in the future this code will have problems as it
+		//attempts to work on more complex static meshes and such.
+		//Hopefully the assert catches it, and can add new cases.
+		for(int j=0;j < *pNumVerts;j++)
 		{
 			switch(pAccs[acc].mType)
 			{
@@ -713,10 +706,10 @@ static ID3D11Buffer	*sMakeMeshVB(GraphicsDevice *pGD,
 	}
 
 	//ram for the assembled verts
-	void	*pVerts	=malloc(gTotal * count);
+	void	*pVerts	=malloc(*pVertSize * *pNumVerts);
 
 	//assemble one at a time... PainPeko
-	for(int j=0;j < count;j++)
+	for(int j=0;j < *pNumVerts;j++)
 	{
 		int	ofs		=0;
 		for(int i=0;i < pVF->mNumElements;i++)
@@ -724,17 +717,20 @@ static ID3D11Buffer	*sMakeMeshVB(GraphicsDevice *pGD,
 			int	gSize	=grogSizes[i];
 
 			//copy squished elements
-			memcpy((pVerts + (j * gTotal) + ofs),
+			memcpy((pVerts + (j * *pVertSize) + ofs),
 				pSquishSpace[i] + (j * gSize), gSize);
 
 			ofs	+=gSize;
 		}
 	}
 
-	D3D11_BUFFER_DESC	bufDesc;
-	sMakeVBDesc(&bufDesc, totalSize);
+	//free squishface buffers
+	for(int i=0;i < pVF->mNumElements;i++)
+	{
+		free(pSquishSpace[i]);
+	}
 
-	return	GD_CreateBufferWithData(pGD, &bufDesc, pVerts, totalSize);
+	return	pVerts;
 }
 
 static Mesh	*sMakeMeshes(GraphicsDevice *pGD,
@@ -745,11 +741,10 @@ static Mesh	*sMakeMeshes(GraphicsDevice *pGD,
 {
 	int	numMeshes	=json_object_array_length(pMeshes);
 	
+	//todo:  test multiple meshes
 	assert(numMeshes == 1);
 	
 	Mesh	*pRet	=NULL;
-	
-	//	GSNode	*pGNs	=malloc(sizeof(GSNode) * numNodes);
 	
 	for(int i=0;i < numMeshes;i++)
 	{
@@ -823,17 +818,38 @@ static Mesh	*sMakeMeshes(GraphicsDevice *pGD,
 			}
 		}
 
-		ID3D11Buffer	*pVB	=sMakeMeshVB(pGD, pVF, pBVs, pAccs, pBin);
+		//create mesh
+		{
+			int	numVerts, vSize;
+			void	*pVData	=sMakeMeshData(pGD, pVF, pBVs,
+				pAccs, pBin, &numVerts, &vSize);
 
+			//index data
+			Accessor	*pIndAcc	=&pAccs[indAccessIndex];
+			BufferView	*pBVI		=&pBVs[pIndAcc->mBufferView];
 
+			//calc total size of the buffer needed
+			int	size	=sSizeForAccType(pIndAcc);
+
+			int	totalSize	=pIndAcc->mCount * size;
+
+			assert(totalSize == pBVI->mByteLength);
+
+			pRet	=Mesh_Create(pGD, pSK, pName,
+				pVData, &pBin[pBVI->mByteOffset],
+				pVF->mpElements, pVF->mNumElements,
+				numVerts, pIndAcc->mCount, vSize);
+			
+			free(pVData);
+		}
 	}
 	
 	return	pRet;
 }
 
 
-Character	*GLCV_ExtractCharacter(GraphicsDevice *pGD,
-	const StuffKeeper *pSK, const GLTFFile *pGF)
+Static	*GLCV_ExtractStatic(GraphicsDevice *pGD,
+	const StuffKeeper *pSK, const GLTFFile *pGF, Mesh **ppMesh)
 {
 	assert(pGF != NULL);
 
@@ -900,4 +916,8 @@ Character	*GLCV_ExtractCharacter(GraphicsDevice *pGD,
 	}
 
 	Mesh	*pMesh	=sMakeMeshes(pGD, pSK, pMeshes, pGF->mpBinChunk, pAcs, pBVs);
+
+	*ppMesh	=pMesh;
+
+	return	Static_Create(pMesh);
 }

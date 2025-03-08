@@ -21,9 +21,13 @@ typedef struct	GLTFFile_t
 
 static void sReadJSON(FILE *pFile, GLTFFile *pGLTF, uint32_t len)
 {
-	char	*pBuf	=malloc(len);
+	char	*pBuf	=malloc(len + 1);
 
-	fread(pBuf, 1, len, pFile);
+	int	numRead	=fread(pBuf, 1, len, pFile);
+
+	pBuf[len]	=0;
+
+	assert(numRead == len);
 
 	pGLTF->mpJSON	=json_tokener_parse(pBuf);
 

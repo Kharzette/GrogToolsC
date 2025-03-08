@@ -1137,6 +1137,30 @@ static void	AxisEH(void *pContext, const SDL_Event *pEvt)
 	pTS->mbDrawAxis	=!pTS->mbDrawAxis;
 }
 
+static void	sUpdateCharacter(AppContext *pAC, const Mesh *pMesh)
+{
+	//pass along to other gumps
+	SKE_SetCharacter(pAC->mpSKE, pAC->mpChar);
+	RC_SetCharacter(pAC->mpRC, pAC->mpChar);
+
+	printf("Character loaded...\n");
+
+	StringList	*pParts	=Character_GetPartList(pAC->mpChar);
+
+	DictSZ_New(&pAC->mpMeshes);
+
+	const StringList	*pCur	=SZList_Iterate(pParts);
+	while(pCur != NULL)
+	{
+		DictSZ_Add(&pAC->mpMeshes, SZList_IteratorValUT(pCur), pMesh);
+
+		listbox_add_elem(pAC->mpMeshPartLB, SZList_IteratorVal(pCur), NULL);
+
+		pCur	=SZList_IteratorNext(pCur);
+	}
+
+	SZList_Clear(&pParts);
+}
 
 static void sLoadGLTF(AppContext *pAC, Event *pEvt)
 {
@@ -1170,7 +1194,26 @@ static void sLoadGLTF(AppContext *pAC, Event *pEvt)
 		pGF	=GLTF_Create(pFileName);
 	}
 
-	Character	*pChar	=GLCV_ExtractCharacter(pAC->mpGD, pAC->mpSK, pGF);
+	Mesh	*pMesh;
+	pAC->mpStatic	=GLCV_ExtractStatic(pAC->mpGD, pAC->mpSK, pGF, &pMesh);
+
+//	sUpdateCharacter(pAC, pMesh);
+
+	StringList	*pParts	=Static_GetPartList(pAC->mpStatic);
+
+	DictSZ_New(&pAC->mpMeshes);
+
+	const StringList	*pCur	=SZList_Iterate(pParts);
+	while(pCur != NULL)
+	{
+		DictSZ_Add(&pAC->mpMeshes, SZList_IteratorValUT(pCur), pMesh);
+
+		listbox_add_elem(pAC->mpMeshPartLB, SZList_IteratorVal(pCur), NULL);
+
+		pCur	=SZList_IteratorNext(pCur);
+	}
+
+	SZList_Clear(&pParts);
 }
 
 static void sLoadCharacter(AppContext *pAC, Event *pEvt)

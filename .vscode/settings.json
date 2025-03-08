@@ -10,6 +10,8 @@
         "graphicsdevice.h": "c",
         "skeleton.h": "c",
         "vector": "c",
-        "animlib.h": "c"
+        "animlib.h": "c",
+        "string.h": "c",
+        "character.h": "c"
     }
 }
