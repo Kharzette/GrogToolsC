@@ -81,7 +81,6 @@ typedef struct AppContext_t
 	Character	*mpChar;
 	Static		*mpStatic;
 	MaterialLib	*mpMatLib;
-	DictSZ		*mpMeshes;
 
 	//prims
 	LightRay	*mpLR;
@@ -759,17 +758,17 @@ static void sRender(AppContext *pApp, const real64_t prTime, const real64_t cTim
 	//draw mesh
 	if(pApp->mpChar != NULL)
 	{
-		if(pApp->mpMeshes != NULL && pApp->mpALib != NULL && pApp->mpMatLib != NULL)
+		if(pApp->mpALib != NULL && pApp->mpMatLib != NULL)
 		{
-			Character_Draw(pApp->mpChar, pApp->mpMeshes, pApp->mpMatLib,
+			Character_Draw(pApp->mpChar, pApp->mpMatLib,
 							pApp->mpALib, pApp->mpGD, pApp->mpCBK);
 		}
 	}
 	else if(pApp->mpStatic != NULL)
 	{
-		if(pApp->mpMeshes != NULL && pApp->mpMatLib != NULL)
+		if(pApp->mpMatLib != NULL)
 		{
-			Static_Draw(pApp->mpStatic, pApp->mpMeshes, pApp->mpMatLib,
+			Static_Draw(pApp->mpStatic, pApp->mpMatLib,
 							pApp->mpGD, pApp->mpCBK);
 		}
 	}
@@ -1147,13 +1146,9 @@ static void	sUpdateCharacter(AppContext *pAC, const Mesh *pMesh)
 
 	StringList	*pParts	=Character_GetPartList(pAC->mpChar);
 
-	DictSZ_New(&pAC->mpMeshes);
-
 	const StringList	*pCur	=SZList_Iterate(pParts);
 	while(pCur != NULL)
 	{
-		DictSZ_Add(&pAC->mpMeshes, SZList_IteratorValUT(pCur), pMesh);
-
 		listbox_add_elem(pAC->mpMeshPartLB, SZList_IteratorVal(pCur), NULL);
 
 		pCur	=SZList_IteratorNext(pCur);
@@ -1194,20 +1189,15 @@ static void sLoadGLTF(AppContext *pAC, Event *pEvt)
 		pGF	=GLTF_Create(pFileName);
 	}
 
-	Mesh	*pMesh;
-	pAC->mpStatic	=GLCV_ExtractStatic(pAC->mpGD, pAC->mpSK, pGF, &pMesh);
+	pAC->mpStatic	=GLCV_ExtractStatic(pAC->mpGD, pAC->mpSK, pGF);
 
 //	sUpdateCharacter(pAC, pMesh);
 
 	StringList	*pParts	=Static_GetPartList(pAC->mpStatic);
 
-	DictSZ_New(&pAC->mpMeshes);
-
 	const StringList	*pCur	=SZList_Iterate(pParts);
 	while(pCur != NULL)
 	{
-		DictSZ_Add(&pAC->mpMeshes, SZList_IteratorValUT(pCur), pMesh);
-
 		listbox_add_elem(pAC->mpMeshPartLB, SZList_IteratorVal(pCur), NULL);
 
 		pCur	=SZList_IteratorNext(pCur);
@@ -1236,7 +1226,7 @@ static void sLoadCharacter(AppContext *pAC, Event *pEvt)
 		Character_Destroy(pAC->mpChar);
 	}
 
-	pAC->mpChar	=Character_Read(pFileName);
+	pAC->mpChar	=Character_Read(pAC->mpGD, pAC->mpSK, pFileName, true);
 
 	//pass along to other gumps
 	SKE_SetCharacter(pAC->mpSKE, pAC->mpChar);
@@ -1246,54 +1236,14 @@ static void sLoadCharacter(AppContext *pAC, Event *pEvt)
 
 	StringList	*pParts	=Character_GetPartList(pAC->mpChar);
 
-	DictSZ_New(&pAC->mpMeshes);
-
-	UT_string	*szPath	=SZ_StripFileName(pFileName);
-
-	UT_string	*szFullPath;
-	utstring_new(szFullPath);
-
 	const StringList	*pCur	=SZList_Iterate(pParts);
 	while(pCur != NULL)
 	{
-		utstring_printf(szFullPath, "%s/%s.mesh", utstring_body(szPath), SZList_IteratorVal(pCur));
-
-		Mesh	*pMesh	=Mesh_Read(pAC->mpGD, pAC->mpSK, utstring_body(szFullPath), true);
-
-		DictSZ_Add(&pAC->mpMeshes, SZList_IteratorValUT(pCur), pMesh);
-
 		listbox_add_elem(pAC->mpMeshPartLB, SZList_IteratorVal(pCur), NULL);
-
-		utstring_clear(szFullPath);
-
 		pCur	=SZList_IteratorNext(pCur);
 	}
 
 	SZList_Clear(&pParts);
-}
-
-static void	sSaveMeshParts(const UT_string *pKey, const void *pValue, void *pContext)
-{
-	Mesh	*pMesh	=(Mesh *)pValue;
-	if(pMesh == NULL)
-	{
-		printf("Bad mesh for %s\n", utstring_body(pKey));
-		return;
-	}
-
-	printf("Saving mesh %s\n", utstring_body(pKey));
-
-	UT_string	*szPath	=(UT_string *)pContext;
-
-	UT_string	*szFullPath;
-	utstring_new(szFullPath);
-
-	utstring_printf(szFullPath, "%s/%s.mesh",
-		utstring_body(szPath), utstring_body(pKey));
-
-	Mesh_Write(pMesh, utstring_body(szFullPath));
-
-	utstring_done(szFullPath);
 }
 
 static void sSaveCharacter(AppContext *pAC, Event *pEvt)
@@ -1328,13 +1278,6 @@ static void sSaveCharacter(AppContext *pAC, Event *pEvt)
 	Character_Write(pAC->mpChar, utstring_body(szFileName));
 
 	printf("Character saved...\n");
-
-	UT_string	*szPath	=SZ_StripFileName(pFileName);
-
-	//save mesh parts
-	DictSZ_ForEach(pAC->mpMeshes, sSaveMeshParts, szPath);
-
-	utstring_done(szPath);
 }
 
 static void sLoadStatic(AppContext *pAC, Event *pEvt)
@@ -1357,7 +1300,7 @@ static void sLoadStatic(AppContext *pAC, Event *pEvt)
 		Static_Destroy(pAC->mpStatic);
 	}
 
-	pAC->mpStatic	=Static_Read(pFileName);
+	pAC->mpStatic	=Static_Read(pAC->mpGD, pAC->mpSK, pFileName, true);
 
 	printf("Static loaded...\n");
 
@@ -1366,26 +1309,10 @@ static void sLoadStatic(AppContext *pAC, Event *pEvt)
 
 	StringList	*pParts	=Static_GetPartList(pAC->mpStatic);
 
-	DictSZ_New(&pAC->mpMeshes);
-
-	UT_string	*szPath	=SZ_StripFileName(pFileName);
-
-	UT_string	*szFullPath;
-	utstring_new(szFullPath);
-
 	const StringList	*pCur	=SZList_Iterate(pParts);
 	while(pCur != NULL)
 	{
-		utstring_printf(szFullPath, "%s/%s.mesh", utstring_body(szPath), SZList_IteratorVal(pCur));
-
-		Mesh	*pMesh	=Mesh_Read(pAC->mpGD, pAC->mpSK, utstring_body(szFullPath), true);
-
-		DictSZ_Add(&pAC->mpMeshes, SZList_IteratorValUT(pCur), pMesh);
-
 		listbox_add_elem(pAC->mpMeshPartLB, SZList_IteratorVal(pCur), NULL);
-
-		utstring_clear(szFullPath);
-
 		pCur	=SZList_IteratorNext(pCur);
 	}
 
@@ -1426,9 +1353,6 @@ static void sSaveStatic(AppContext *pAC, Event *pEvt)
 	printf("Static saved...\n");
 
 	UT_string	*szPath	=SZ_StripFileName(pFileName);
-
-	//save mesh parts
-	DictSZ_ForEach(pAC->mpMeshes, sSaveMeshParts, szPath);
 
 	utstring_done(szPath);
 }
@@ -2061,14 +1985,6 @@ static void sOnHotKeyReName(AppContext *pAC, Event *pEvt)
 	{
 		goodPos.y	+=size.height / 4;
 
-		//also rename in meshes
-		Mesh	*pMesh	=NULL;
-		if(DictSZ_ContainsKeyccp(pAC->mpMeshes, szOld))
-		{
-			pMesh	=DictSZ_GetValueccp(pAC->mpMeshes, szOld);
-			DictSZ_Removeccp(&pAC->mpMeshes, listbox_text(pLB, seld));
-		}
-
 		uint32_t	result;
 
 		if(pAC->mpChar != NULL)
@@ -2082,11 +1998,6 @@ static void sOnHotKeyReName(AppContext *pAC, Event *pEvt)
 				listbox_text(pLB, seld), pLB, pAC->mpStatic, (ReNameFunc)Static_ReNamePart);
 		}
 
-		if(pMesh != NULL)
-		{
-			DictSZ_Addccp(&pAC->mpMeshes, edit_get_text(pAC->mpTextInput), pMesh);
-			Mesh_SetName(pMesh, edit_get_text(pAC->mpTextInput));
-		}
 		printf("MeshBox %d\n", result);
 	}
 }
@@ -2129,15 +2040,6 @@ static void sOnHotKeyDelete(AppContext *pAC, Event *pEvt)
 	else if(pLB == pAC->mpMeshPartLB)
 	{
 		Character_DeletePart(pAC->mpChar, szItem);
-
-		//also nuke in meshes
-		Mesh	*pMesh	=NULL;
-		if(DictSZ_ContainsKeyccp(pAC->mpMeshes, szItem))
-		{
-			pMesh	=DictSZ_GetValueccp(pAC->mpMeshes, szItem);
-			DictSZ_Removeccp(&pAC->mpMeshes, listbox_text(pLB, seld));
-			Mesh_Destroy(pMesh);
-		}
 	}
 
 	sDeleteListBoxItem(pLB, seld);

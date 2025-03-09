@@ -482,8 +482,7 @@ static Skin	*sMakeSkins(const struct json_object *pSkins,
 	return	pRet;
 }
 
-static ID3D11InputLayout	*sGuessLayout(const StuffKeeper *pSK,
-	const struct json_object *pVAttr, VertFormat *pVF)
+static void	sFillVertFormat(const struct json_object *pVAttr, VertFormat *pVF)
 {
 	int	numElems	=0;
 
@@ -539,8 +538,6 @@ static ID3D11InputLayout	*sGuessLayout(const StuffKeeper *pSK,
 
 		elIdx++;
 	}
-
-	return	StuffKeeper_FindMatch(pSK, pVF->mpElements, numElems);
 }
 
 static int	sSizeForCompType(int compType)
@@ -733,122 +730,106 @@ static void	*sMakeMeshData(GraphicsDevice *pGD,
 	return	pVerts;
 }
 
-static Mesh	*sMakeMeshes(GraphicsDevice *pGD,
+static Mesh	*sMakeMeshIndex(GraphicsDevice *pGD,
 	const StuffKeeper *pSK,
 	const struct json_object *pMeshes,
 	const uint8_t *pBin, const Accessor *pAccs,
-	const BufferView *pBVs)
+	const BufferView *pBVs, int index)
 {
 	int	numMeshes	=json_object_array_length(pMeshes);
+
+	assert(index < numMeshes);
 	
-	//todo:  test multiple meshes
-	assert(numMeshes == 1);
+	int			indAccessIndex	=-1;
+	UT_string	*pName			=NULL;
+	int			matIndex		=-1;		
+
+	//the returned matched vert format
+	VertFormat	*pVF	=malloc(sizeof(VertFormat));
 	
-	Mesh	*pRet	=NULL;
+	printf("Mesh %d\n", index);
 	
-	for(int i=0;i < numMeshes;i++)
+	const struct json_object	*pArr	=json_object_array_get_idx(pMeshes, index);
+	
+	json_object_object_foreach(pArr, pKey, pVal)
 	{
-		int			indAccessIndex	=-1;
-		UT_string	*pName			=NULL;
-		int			matIndex		=-1;		
-
-		//this will be matched from vert attributes
-		ID3D11InputLayout	*pLay	=NULL;
-
-		//the returned matched vert format
-		VertFormat	*pVF	=malloc(sizeof(VertFormat));
+		enum json_type	t	=json_object_get_type(pVal);
+		printf("KeyValue: %s : %s,%s\n", pKey, json_type_to_name(t),
+			json_object_get_string(pVal));
 		
-		printf("Mesh %d\n", i);
-		
-		const struct json_object	*pArr	=json_object_array_get_idx(pMeshes, i);
-		
-		json_object_object_foreach(pArr, pKey, pVal)
+		if(0 == strncmp("primitives", pKey, 10))
 		{
-			enum json_type	t	=json_object_get_type(pVal);
-			printf("KeyValue: %s : %s,%s\n", pKey, json_type_to_name(t),
-				json_object_get_string(pVal));
-			
-			if(0 == strncmp("primitives", pKey, 10))
+			assert(t == json_type_array);
+
+			const struct json_object	*pAtArr	=json_object_array_get_idx(pVal, 0);
+
+			//in my test data this has vert attributes,
+			//and an indices int, and a materal int
+			json_object_object_foreach(pAtArr, pPrimKey, pPrimVal)
 			{
-				assert(t == json_type_array);
+				enum json_type	tprim	=json_object_get_type(pPrimVal);
+				printf("AttrKeyValue: %s : %s,%s\n", pPrimKey,
+					json_type_to_name(tprim),
+					json_object_get_string(pPrimVal));
 
-				const struct json_object	*pAtArr	=json_object_array_get_idx(pVal, 0);
-
-				//in my test data this has vert attributes,
-				//and an indices int, and a materal int
-				json_object_object_foreach(pAtArr, pPrimKey, pPrimVal)
+				if(0 == strncmp("attributes", pPrimKey, 10))
 				{
-					enum json_type	tprim	=json_object_get_type(pPrimVal);
-					printf("AttrKeyValue: %s : %s,%s\n", pPrimKey,
-						json_type_to_name(tprim),
-						json_object_get_string(pPrimVal));
+					assert(tprim == json_type_object);
 
-					if(0 == strncmp("attributes", pPrimKey, 10))
-					{
-						assert(tprim == json_type_object);
+					sFillVertFormat(pPrimVal, pVF);
+				}
+				else if(0 == strncmp("indices", pPrimKey, 7))
+				{
+					assert(tprim == json_type_int);
 
-						pLay	=sGuessLayout(pSK, pPrimVal, pVF);
-						if(pLay == NULL)
-						{
-							printf("No match for vertex format!\n");
-							return	NULL;
-						}
-					}
-					else if(0 == strncmp("indices", pPrimKey, 7))
-					{
-						assert(tprim == json_type_int);
+					indAccessIndex	=json_object_get_int(pPrimVal);
+				}
+				else if(0 == strncmp("material", pPrimKey, 8))
+				{
+					assert(tprim == json_type_int);
 
-						indAccessIndex	=json_object_get_int(pPrimVal);
-					}
-					else if(0 == strncmp("material", pPrimKey, 8))
-					{
-						assert(tprim == json_type_int);
-
-						matIndex	=json_object_get_int(pPrimVal);
-					}
+					matIndex	=json_object_get_int(pPrimVal);
 				}
 			}
-			else if(0 == strncmp("name", pKey, 4))
-			{
-				assert(t == json_type_string);
-				
-				utstring_new(pName);
-				
-				utstring_printf(pName, "%s", json_object_get_string(pVal));
-			}
 		}
-
-		//create mesh
+		else if(0 == strncmp("name", pKey, 4))
 		{
-			int	numVerts, vSize;
-			void	*pVData	=sMakeMeshData(pGD, pVF, pBVs,
-				pAccs, pBin, &numVerts, &vSize);
-
-			//index data
-			Accessor	*pIndAcc	=&pAccs[indAccessIndex];
-			BufferView	*pBVI		=&pBVs[pIndAcc->mBufferView];
-
-			//calc total size of the buffer needed
-			int	size	=sSizeForAccType(pIndAcc);
-
-			int	totalSize	=pIndAcc->mCount * size;
-
-			assert(totalSize == pBVI->mByteLength);
-
-			pRet	=Mesh_Create(pGD, pSK, pName,
-				pVData, &pBin[pBVI->mByteOffset],
-				pVF->mpElements, pVF->mNumElements,
-				numVerts, pIndAcc->mCount, vSize);
+			assert(t == json_type_string);
 			
-			free(pVData);
+			utstring_new(pName);
+			
+			utstring_printf(pName, "%s", json_object_get_string(pVal));
 		}
 	}
+
+	//create mesh
+	int	numVerts, vSize;
+	void	*pVData	=sMakeMeshData(pGD, pVF, pBVs,
+		pAccs, pBin, &numVerts, &vSize);
+
+	//index data
+	Accessor	*pIndAcc	=&pAccs[indAccessIndex];
+	BufferView	*pBVI		=&pBVs[pIndAcc->mBufferView];
+
+	//calc total size of the buffer needed
+	int	size	=sSizeForAccType(pIndAcc);
+
+	int	totalSize	=pIndAcc->mCount * size;
+
+	assert(totalSize == pBVI->mByteLength);
+
+	Mesh	*pRet	=Mesh_Create(pGD, pSK, pName,
+		pVData, &pBin[pBVI->mByteOffset],
+		pVF->mpElements, pVF->mNumElements,
+		numVerts, pIndAcc->mCount, vSize);
+	
+	utstring_free(pName);
 	
 	return	pRet;
 }
 
 
-Static	*GLCV_ExtractStatic(GraphicsDevice *pGD,
+Character	*GLCV_ExtractCharacter(GraphicsDevice *pGD,
 	const StuffKeeper *pSK, const GLTFFile *pGF, Mesh **ppMesh)
 {
 	assert(pGF != NULL);
@@ -915,9 +896,52 @@ Static	*GLCV_ExtractStatic(GraphicsDevice *pGD,
 		return	NULL;
 	}
 
-	Mesh	*pMesh	=sMakeMeshes(pGD, pSK, pMeshes, pGF->mpBinChunk, pAcs, pBVs);
+//	ppMesh	=sMakeMeshes(pGD, pSK, pMeshes, pGF->mpBinChunk, pAcs, pBVs);
 
-	*ppMesh	=pMesh;
+//	*ppMesh	=pMesh;
 
-	return	Static_Create(pMesh);
+//	return	Character_Create(pSkin, pMesh);
+	return	NULL;
+}
+
+Static	*GLCV_ExtractStatic(GraphicsDevice *pGD,
+	const StuffKeeper *pSK, const GLTFFile *pGF)
+{
+	assert(pGF != NULL);
+
+	const struct json_object	*pAcc	=json_object_object_get(pGF->mpJSON, "accessors");
+	if(pAcc == NULL)
+	{
+		printf("gltf has no accessors.\n");
+		return	NULL;
+	}
+
+	Accessor	*pAcs	=sReadAccessors(pAcc);
+
+	const struct json_object	*pBV	=json_object_object_get(pGF->mpJSON, "bufferViews");
+	if(pBV == NULL)
+	{
+		printf("gltf has no bufferViews.\n");
+		return	NULL;
+	}
+
+	BufferView	*pBVs	=sGetBufferViews(pBV);
+
+	const struct json_object	*pMeshes	=json_object_object_get(pGF->mpJSON, "meshes");
+	if(pMeshes == NULL)
+	{
+		printf("gltf has no meshes.\n");
+		return	NULL;
+	}
+
+	int	numMeshes	=json_object_array_length(pMeshes);
+
+	Mesh	*pMeshArr[numMeshes];
+
+	for(int i=0;i < numMeshes;i++)
+	{
+		pMeshArr[i]	=sMakeMeshIndex(pGD, pSK, pMeshes,
+						pGF->mpBinChunk, pAcs, pBVs, i);
+	}
+	return	Static_Create(pMeshArr, numMeshes);
 }
