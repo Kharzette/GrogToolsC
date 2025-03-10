@@ -1927,13 +1927,31 @@ static void	sFillMaterialFormValues(AppContext *pApp, const char *szMaterial)
 	if(pVS != NULL)
 	{
 		const UT_string	*pVSName	=StuffKeeper_GetVSName(pApp->mpSK, pVS);
-		sSelectPopupItem(pApp->mpVSPop, utstring_body(pVSName));
+		const UT_string	*pFile	=StuffKeeper_GetVSFile(pApp->mpSK, pVSName);
+
+		if(pFile != NULL && sSelectPopupItem(pApp->mpShaderFile, utstring_body(pFile)))
+		{
+			sShaderFileChanged(pApp, NULL);
+		}
+		else
+		{
+			printf("Warning: Couldn't set shader file %s\n", utstring_body(pFile));
+		}
+
+		if(!sSelectPopupItem(pApp->mpVSPop, utstring_body(pVSName)))
+		{
+			printf("Warning: Couldn't set shader %s\n", utstring_body(pVSName));
+		}
 	}
 
 	if(pPS != NULL)
 	{
 		const UT_string	*pPSName	=StuffKeeper_GetPSName(pApp->mpSK, pPS);
-		sSelectPopupItem(pApp->mpPSPop, utstring_body(pPSName));
+
+		if(!sSelectPopupItem(pApp->mpPSPop, utstring_body(pPSName)))
+		{
+			printf("Warning: Couldn't set shader %s\n", utstring_body(pPSName));
+		}
 	}
 }
 
@@ -2039,7 +2057,14 @@ static void sOnHotKeyDelete(AppContext *pAC, Event *pEvt)
 	}
 	else if(pLB == pAC->mpMeshPartLB)
 	{
-		Character_DeletePart(pAC->mpChar, szItem);
+		if(pAC->mpChar != NULL)
+		{
+			Character_DeletePart(pAC->mpChar, szItem);
+		}
+		else if(pAC->mpStatic != NULL)
+		{
+			Static_DeletePart(pAC->mpStatic, szItem);
+		}
 	}
 
 	sDeleteListBoxItem(pLB, seld);

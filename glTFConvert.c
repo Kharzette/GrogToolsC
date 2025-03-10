@@ -229,6 +229,106 @@ static GSNode	*sMakeNodes(const struct json_object *pNodes)
 	return	pGNs;
 }
 
+//for nodes that are just tied to static mesh parts
+static void	sGetPartTransforms(const struct json_object	*pNodes,
+	mat4 xForms[], bool bFlipZTranslations, int numParts)
+{
+	int	numNodes	=json_object_array_length(pNodes);
+
+	int	meshIdx	=-1;
+	int	skinIdx	=-1;
+
+	for(int i=0;i < numNodes;i++)
+	{
+		vec3		scale	={1,1,1};
+		vec4		rot		={0,0,0,1};
+		vec3		trans	={0,0,0};
+		GSNode		gsNode	={0};
+
+		int		numKids		=0;
+
+		printf("Node %d\n", i);
+
+		const struct json_object	*pArr	=json_object_array_get_idx(pNodes, i);
+
+		json_object_object_foreach(pArr, pKey, pVal)
+		{
+			enum json_type	t	=json_object_get_type(pVal);
+			printf("KeyValue: %s : %s,%s\n", pKey, json_type_to_name(t),
+				json_object_get_string(pVal));
+			
+			if(0 == strncmp("name", pKey, 4))
+			{
+				assert(t == json_type_string);
+			}
+			else if(0 == strncmp("rotation", pKey, 8))
+			{
+				assert(t == json_type_array);
+
+				sGetVec4(pVal, rot);
+
+				if(bFlipZTranslations)
+				{
+					rot[0]	=-rot[0];
+					rot[1]	=-rot[1];
+				}
+			}
+			else if(0 == strncmp("scale", pKey, 8))
+			{
+				assert(t == json_type_array);
+
+				sGetVec3(pVal, scale);
+			}
+			else if(0 == strncmp("translation", pKey, 8))
+			{
+				assert(t == json_type_array);
+
+				sGetVec3(pVal, trans);
+
+				if(bFlipZTranslations)
+				{
+					trans[2]	=-trans[2];
+				}
+			}
+			else if(0 == strncmp("children", pKey, 8))
+			{
+				assert(t == json_type_array);
+
+				numKids	=json_object_array_length(pVal);
+			}
+			else if(0 == strncmp("mesh", pKey, 4))
+			{
+				assert(t == json_type_int);
+
+				meshIdx	=json_object_get_int(pVal);
+			}
+			else if(0 == strncmp("skin", pKey, 4))
+			{
+				assert(t == json_type_int);
+
+				skinIdx	=json_object_get_int(pVal);
+			}
+			else
+			{
+				assert(false);
+			}
+		}
+
+		glm_vec3_copy(trans, gsNode.mKeyValue.mPosition);
+		glm_vec3_copy(scale, gsNode.mKeyValue.mScale);
+		glm_vec4_copy(rot, gsNode.mKeyValue.mRotation);
+
+		if(bFlipZTranslations)
+		{
+			KeyFrame_GetMatrixOtherWay(&gsNode.mKeyValue, xForms[meshIdx]);
+		}
+		else
+		{
+			KeyFrame_GetMatrix(&gsNode.mKeyValue, xForms[meshIdx]);
+		}
+	}
+}
+
 static int	sGetNodeCount(const struct json_object *pScenes)
 {
 	const struct json_object	*pArr	=json_object_array_get_idx(pScenes, 0);
@@ -610,7 +710,7 @@ static int	sSizeForAccType(const Accessor *pAcc)
 static void	*sMakeMeshData(GraphicsDevice *pGD,
 	const VertFormat *pVF, const BufferView *pBVs,
 	const Accessor *pAccs, const uint8_t *pBin,
-	int *pNumVerts, int *pVertSize)
+	bool bFlip, int *pNumVerts, int *pVertSize)
 {
 	//calc total size of the buffer needed
 	int	vSize	=0;
@@ -685,8 +785,18 @@ static void	*sMakeMeshData(GraphicsDevice *pGD,
 			switch(pAccs[acc].mType)
 			{
 				case	TYPE_VEC2:
-					Misc_ConvertVec2ToF16((const float *)&pBin[ofs + (j * glSize)],
-						pSquishSpace[i] + (j * gSize));
+					if(bFlip)
+					{
+						Misc_ConvertFlippedUVVec2ToF16(
+							(const float *)&pBin[ofs + (j * glSize)],
+							pSquishSpace[i] + (j * gSize));
+					}
+					else
+					{
+						Misc_ConvertVec2ToF16(
+							(const float *)&pBin[ofs + (j * glSize)],
+							pSquishSpace[i] + (j * gSize));
+					}
 				break;
 				case	TYPE_VEC3:
 					Misc_ConvertVec3ToF16((const float *)&pBin[ofs + (j * glSize)],
@@ -698,6 +808,31 @@ static void	*sMakeMeshData(GraphicsDevice *pGD,
 					break;
 				default:
 					assert(false);
+			}
+		}
+	}
+
+	//flip if needed
+	if(bFlip)
+	{
+		for(int i=0;i < pVF->mNumElements;i++)
+		{
+			int	gSize	=grogSizes[i];
+			if(pVF->mpElements[i] == EL_POSITION)
+			{
+				for(int j=0;j < *pNumVerts;j++)
+				{
+					float	z	=*(float *)(pSquishSpace[i] + (j * gSize) + 8);
+					*(float *)(pSquishSpace[i] + (j * gSize) + 8)	=-z;
+				}
+			}
+			else if(pVF->mpElements[i] == EL_POSITION4)
+			{
+				for(int j=0;j < *pNumVerts;j++)
+				{
+					float	z	=*(float *)(pSquishSpace[i] + (j * gSize) + 8);
+					*(float *)(pSquishSpace[i] + (j * gSize) + 8)	=-z;
+				}
 			}
 		}
 	}
@@ -734,7 +869,7 @@ static Mesh	*sMakeMeshIndex(GraphicsDevice *pGD,
 	const StuffKeeper *pSK,
 	const struct json_object *pMeshes,
 	const uint8_t *pBin, const Accessor *pAccs,
-	const BufferView *pBVs, int index)
+	const BufferView *pBVs, bool bFlipZ, int index)
 {
 	int	numMeshes	=json_object_array_length(pMeshes);
 
@@ -805,7 +940,7 @@ static Mesh	*sMakeMeshIndex(GraphicsDevice *pGD,
 	//create mesh
 	int	numVerts, vSize;
 	void	*pVData	=sMakeMeshData(pGD, pVF, pBVs,
-		pAccs, pBin, &numVerts, &vSize);
+		pAccs, pBin, bFlipZ, &numVerts, &vSize);
 
 	//index data
 	Accessor	*pIndAcc	=&pAccs[indAccessIndex];
@@ -934,6 +1069,14 @@ Static	*GLCV_ExtractStatic(GraphicsDevice *pGD,
 		return	NULL;
 	}
 
+	const struct json_object	*pNodes	=json_object_object_get(pGF->mpJSON, "nodes");
+	if(pNodes == NULL)
+	{
+		printf("gltf has no nodes.\n");
+		return	NULL;
+	}
+	GSNode	*pGNs	=sMakeNodes(pNodes);
+	
 	int	numMeshes	=json_object_array_length(pMeshes);
 
 	Mesh	*pMeshArr[numMeshes];
@@ -941,7 +1084,14 @@ Static	*GLCV_ExtractStatic(GraphicsDevice *pGD,
 	for(int i=0;i < numMeshes;i++)
 	{
 		pMeshArr[i]	=sMakeMeshIndex(pGD, pSK, pMeshes,
-						pGF->mpBinChunk, pAcs, pBVs, i);
+						pGF->mpBinChunk, pAcs, pBVs, true, i);
 	}
-	return	Static_Create(pMeshArr, numMeshes);
+
+	mat4	xForms[numMeshes];
+
+	sGetPartTransforms(pNodes, xForms, true, numMeshes);
+
+	Static	*pStat	=Static_Create(pMeshArr, xForms, numMeshes);
+
+	return	pStat;
 }
