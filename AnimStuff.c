@@ -12,6 +12,7 @@
 #include	"json-c/arraylist.h"
 #include	"json-c/json_util.h"
 #include	"MeshLib/Skin.h"
+#include	"MeshLib/Skeleton.h"
 #include	"MeshLib/AnimLib.h"
 #include	"MeshLib/Anim.h"
 #include	"MeshLib/SubAnim.h"
@@ -89,7 +90,7 @@ static SubAnim		**sMakeSplitSubAnims(const NodeChannel *pNCList,
 
 Anim	*AnimStuff_GrabAnim(const struct json_object *pAnim,
 	const Accessor *pAccs, const BufferView *pBVs,
-	const uint8_t *pBuf)
+	const uint8_t *pBuf, const Skeleton *pSkel)
 {
 	int			numNCs		=0;
 	UT_string	*pName		=NULL;
@@ -132,6 +133,8 @@ Anim	*AnimStuff_GrabAnim(const struct json_object *pAnim,
 
 		ppMerged[i]	=SubAnim_Merge(ppChanSubs[ofs],
 			ppChanSubs[ofs + 1], ppChanSubs[ofs + 2]);
+		
+		SubAnim_SetBone(ppMerged[i], Skeleton_GetBoneKeyByIndex(pSkel, i), i);
 	}
 
 	return	Anim_Create(pName, ppMerged, numNCs);
@@ -405,10 +408,7 @@ static SubAnim	**sMakeSplitSubAnims(const NodeChannel *pNCList,
 
 		int	subIdx	=pNC->id * 3;
 
-		//rotation
-		ppSubs[subIdx]	=SubAnim_Create(pRTimes, pRKeys, pOutRot->mCount,
-							&pTrg[subIdx], pNC->id);
-		subIdx++;
+		//ORDER MATTERS HERE!
 
 		//translation
 		ppSubs[subIdx]	=SubAnim_Create(pTTimes, pTKeys, pOutTrans->mCount,
@@ -417,6 +417,11 @@ static SubAnim	**sMakeSplitSubAnims(const NodeChannel *pNCList,
 
 		//scale
 		ppSubs[subIdx]	=SubAnim_Create(pSTimes, pSKeys, pOutScale->mCount,
+							&pTrg[subIdx], pNC->id);
+		subIdx++;
+
+		//rotation
+		ppSubs[subIdx]	=SubAnim_Create(pRTimes, pRKeys, pOutRot->mCount,
 							&pTrg[subIdx], pNC->id);
 	}
 	return	ppSubs;

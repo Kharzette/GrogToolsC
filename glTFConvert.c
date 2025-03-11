@@ -1355,7 +1355,7 @@ void	GLCV_ExtractAndAddAnimation(const GLTFFile *pGF, AnimLib **ppALib)
 	{
 		const struct json_object	*pArr	=json_object_array_get_idx(pAnims, i);
 
-		Anim	*pAnim	=AnimStuff_GrabAnim(pArr, pAccs, pBVs, pGF->mpBinChunk);
+		Anim	*pAnim	=AnimStuff_GrabAnim(pArr, pAccs, pBVs, pGF->mpBinChunk, pSkel);
 
 		AnimLib_Add(*ppALib, pAnim);
 	}
