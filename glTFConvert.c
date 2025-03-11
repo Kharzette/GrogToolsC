@@ -4,7 +4,9 @@
 #include	<assert.h>
 #include	<stdint.h>
 #include	<stdbool.h>
+#include	"uthash.h"
 #include	"UtilityLib/StringStuff.h"
+#include	"UtilityLib/ListStuff.h"
 #include	"UtilityLib/GraphicsDevice.h"
 #include	"UtilityLib/MiscStuff.h"
 #include	"MeshLib/Character.h"
@@ -12,6 +14,9 @@
 #include	"MeshLib/GSNode.h"
 #include	"MeshLib/Skin.h"
 #include	"MeshLib/Mesh.h"
+#include	"MeshLib/AnimLib.h"
+#include	"MeshLib/Anim.h"
+#include	"MeshLib/SubAnim.h"
 #include	"MaterialLib/Layouts.h"
 #include	"MaterialLib/StuffKeeper.h"
 #include	<json-c/json_tokener.h>
@@ -20,6 +25,7 @@
 #include	<json-c/linkhash.h>
 #include	"json-c/arraylist.h"
 #include	"json-c/json_util.h"
+#include	"AnimStuff.h"
 
 #define	TYPE_SCALAR	0
 #define	TYPE_VEC2	1
@@ -100,6 +106,7 @@ static void	sGetVec3(const struct json_object *pVec, vec3 vec)
 		vec[i]	=json_object_get_double(pVal);
 	}
 }
+
 
 //return an array of GSNode
 static GSNode	*sMakeNodes(const struct json_object *pNodes)
@@ -227,6 +234,201 @@ static GSNode	*sMakeNodes(const struct json_object *pNodes)
 		}
 	}
 	return	pGNs;
+}
+
+static mat4	*sGetIBP(const uint8_t *pBin, const Accessor *pAcc,
+	const BufferView *pBVs)
+{
+#ifdef __AVX__
+	mat4	*pRet	=aligned_alloc(32, sizeof(mat4) * pAcc->mCount);
+#else
+	mat4	*pRet	=aligned_alloc(16, sizeof(mat4) * pAcc->mCount);
+#endif
+
+	const BufferView	*pBV	=&pBVs[pAcc->mBufferView];
+
+	assert(pBV->mBufIdx == 0);
+
+	memcpy(pRet, &pBin[pBV->mByteOffset], pBV->mByteLength);
+
+	return	pRet;
+}
+
+static Skeleton	*sMakeSkeleton(const struct json_object *pNodes,
+								const struct json_object *pSkins,
+								const uint8_t *pBin, const Accessor *pAccs,
+								const BufferView *pBVs)
+							{
+	int	numNodes	=json_object_array_length(pNodes);
+	int	numSkins	=json_object_array_length(pSkins);
+
+	assert(numSkins == 1);
+	
+	int		ibmAccessIndex	=-1;
+	int		*pJoints		=NULL;
+	mat4	*pIBPs			=NULL;
+	
+	const struct json_object	*pArr	=json_object_array_get_idx(pSkins, 0);
+	
+	json_object_object_foreach(pArr, pKey, pVal)
+	{
+		enum json_type	t	=json_object_get_type(pVal);
+		printf("KeyValue: %s : %s,%s\n", pKey, json_type_to_name(t),
+			json_object_get_string(pVal));
+		
+		if(0 == strncmp("inverseBindMatrices", pKey, 19))
+		{
+			assert(t == json_type_int);
+			
+			ibmAccessIndex	=json_object_get_int(pVal);
+			
+			pIBPs	=sGetIBP(pBin, &pAccs[ibmAccessIndex], pBVs);
+		}
+		else if(0 == strncmp("joints", pKey, 19))
+		{
+			assert(t == json_type_array);
+			
+			int	jarrLen	=json_object_array_length(pVal);
+			
+			
+			pJoints	=malloc(sizeof(int) * jarrLen);
+			
+			for(int j=0;j < jarrLen;j++)
+			{
+				const struct json_object	*pJIdx	=
+					json_object_array_get_idx(pVal, j);
+					
+				pJoints[j]	=json_object_get_int(pJIdx);
+			}
+		}
+		else if(0 == strncmp("name", pKey, 4))
+		{
+			assert(t == json_type_string);			
+		}
+	}
+
+	GSNode	*pGNs	=malloc(sizeof(GSNode) * numNodes);
+
+	int	meshIdx	=-1;
+	int	skinIdx	=-1;
+
+	for(int i=0;i < numNodes;i++)
+	{
+		vec3		scale	={1,1,1};
+		vec4		rot		={0,0,0,1};
+		vec3		trans	={0,0,0};
+		UT_string	*pName	=NULL;
+
+		int		numKids		=0;
+
+		printf("Node %d\n", i);
+
+		const struct json_object	*pArr	=json_object_array_get_idx(pNodes, i);
+
+		json_object_object_foreach(pArr, pKey, pVal)
+		{
+			enum json_type	t	=json_object_get_type(pVal);
+			printf("KeyValue: %s : %s,%s\n", pKey, json_type_to_name(t),
+				json_object_get_string(pVal));
+			
+			if(0 == strncmp("name", pKey, 4))
+			{
+				assert(t == json_type_string);
+
+				utstring_new(pName);
+
+				utstring_printf(pName, "%s", json_object_get_string(pVal));
+			}
+			else if(0 == strncmp("rotation", pKey, 8))
+			{
+				assert(t == json_type_array);
+
+				sGetVec4(pVal, rot);
+			}
+			else if(0 == strncmp("scale", pKey, 8))
+			{
+				assert(t == json_type_array);
+
+				sGetVec3(pVal, scale);
+			}
+			else if(0 == strncmp("translation", pKey, 8))
+			{
+				assert(t == json_type_array);
+
+				sGetVec3(pVal, trans);
+			}
+			else if(0 == strncmp("children", pKey, 8))
+			{
+				assert(t == json_type_array);
+
+				numKids	=json_object_array_length(pVal);
+			}
+			else if(0 == strncmp("mesh", pKey, 4))
+			{
+				assert(t == json_type_int);
+
+				meshIdx	=json_object_get_int(pVal);
+			}
+			else if(0 == strncmp("skin", pKey, 4))
+			{
+				assert(t == json_type_int);
+
+				skinIdx	=json_object_get_int(pVal);
+			}
+			else
+			{
+				assert(false);
+			}
+		}
+
+		pGNs[i].szName			=pName;
+		pGNs[i].mNumChildren	=numKids;
+		pGNs[i].mIndex			=i;
+
+		if(numKids > 0)
+		{
+			pGNs[i].mpChildren	=malloc(sizeof(GSNode *) * numKids);
+		}
+		else
+		{
+			pGNs[i].mpChildren	=NULL;
+		}
+
+		glm_vec3_copy(trans, pGNs[i].mKeyValue.mPosition);
+		glm_vec3_copy(scale, pGNs[i].mKeyValue.mScale);
+		glm_vec4_copy(rot, pGNs[i].mKeyValue.mRotation);
+	}
+
+	//fix up the children
+	for(int i=0;i < numNodes;i++)
+	{
+		if(pGNs[i].mNumChildren <= 0)
+		{
+			continue;
+		}
+
+		const struct json_object	*pArr	=json_object_array_get_idx(pNodes, i);
+
+		json_object_object_foreach(pArr, pKey, pVal)
+		{			
+			enum json_type	t	=json_object_get_type(pVal);
+
+			if(0 == strncmp("children", pKey, 8))
+			{
+				assert(t == json_type_array);
+
+				for(int j=0;j < pGNs[i].mNumChildren;j++)
+				{
+					const struct json_object	*pIdx	=
+						json_object_array_get_idx(pVal, j);
+
+					pGNs[i].mpChildren[j]	=&pGNs[json_object_get_int(pIdx)];
+				}
+			}
+		}
+	}
+
+	return	Skeleton_Create(&pGNs[pJoints[0]]);
 }
 
 //for nodes that are just tied to static mesh parts
@@ -492,24 +694,6 @@ static BufferView	*sGetBufferViews(const struct json_object *pBV)
 			}
 		}
 	}
-	return	pRet;
-}
-
-static mat4	*sGetIBP(const uint8_t *pBin, const Accessor *pAcc,
-					const BufferView *pBVs)
-{
-#ifdef __AVX__
-	mat4	*pRet	=aligned_alloc(32, sizeof(mat4) * pAcc->mCount);
-#else
-	mat4	*pRet	=aligned_alloc(16, sizeof(mat4) * pAcc->mCount);
-#endif
-
-	const BufferView	*pBV	=&pBVs[pAcc->mBufferView];
-
-	assert(pBV->mBufIdx == 0);
-
-	memcpy(pRet, &pBin[pBV->mByteOffset], pBV->mByteLength);
-
 	return	pRet;
 }
 
@@ -964,7 +1148,7 @@ static Mesh	*sMakeMeshIndex(GraphicsDevice *pGD,
 }
 
 
-Character	*GLCV_ExtractCharacter(GraphicsDevice *pGD,
+Character	*GLCV_ExtractChar(GraphicsDevice *pGD,
 	const StuffKeeper *pSK, const GLTFFile *pGF, Mesh **ppMesh)
 {
 	assert(pGF != NULL);
@@ -1031,12 +1215,19 @@ Character	*GLCV_ExtractCharacter(GraphicsDevice *pGD,
 		return	NULL;
 	}
 
-//	ppMesh	=sMakeMeshes(pGD, pSK, pMeshes, pGF->mpBinChunk, pAcs, pBVs);
+	int	numMeshes	=json_object_array_length(pMeshes);
 
-//	*ppMesh	=pMesh;
+	Mesh	*pMeshArr[numMeshes];
 
-//	return	Character_Create(pSkin, pMesh);
-	return	NULL;
+	for(int i=0;i < numMeshes;i++)
+	{
+		pMeshArr[i]	=sMakeMeshIndex(pGD, pSK, pMeshes,
+						pGF->mpBinChunk, pAcs, pBVs, false, i);
+	}
+
+	Character	*pChar	=Character_Create(pSkin, pMeshArr, numMeshes);
+
+	return	pChar;
 }
 
 Static	*GLCV_ExtractStatic(GraphicsDevice *pGD,
@@ -1075,7 +1266,6 @@ Static	*GLCV_ExtractStatic(GraphicsDevice *pGD,
 		printf("gltf has no nodes.\n");
 		return	NULL;
 	}
-	GSNode	*pGNs	=sMakeNodes(pNodes);
 	
 	int	numMeshes	=json_object_array_length(pMeshes);
 
@@ -1094,4 +1284,79 @@ Static	*GLCV_ExtractStatic(GraphicsDevice *pGD,
 	Static	*pStat	=Static_Create(pMeshArr, xForms, numMeshes);
 
 	return	pStat;
+}
+
+void	GLCV_ExtractAndAddAnimation(const GLTFFile *pGF, AnimLib **ppALib)
+{
+	assert(pGF != NULL);
+	assert(ppALib != NULL);
+
+	const struct json_object	*pAcc	=json_object_object_get(pGF->mpJSON, "accessors");
+	if(pAcc == NULL)
+	{
+		printf("gltf has no accessors.\n");
+		return;
+	}
+
+	Accessor	*pAccs	=sReadAccessors(pAcc);
+
+	const struct json_object	*pBV	=json_object_object_get(pGF->mpJSON, "bufferViews");
+	if(pBV == NULL)
+	{
+		printf("gltf has no bufferViews.\n");
+		return;
+	}
+
+	BufferView	*pBVs	=sGetBufferViews(pBV);
+
+	const struct json_object	*pScenes	=json_object_object_get(pGF->mpJSON, "scenes");
+	int	numNodes	=sGetNodeCount(pScenes);
+	if(numNodes < 1)
+	{
+		printf("gltf has no nodes.\n");
+		return;
+	}
+
+	const struct json_object	*pNodes	=json_object_object_get(pGF->mpJSON, "nodes");
+	if(pNodes == NULL)
+	{
+		printf("gltf has no nodes.\n");
+		return;
+	}
+
+	const struct json_object	*pSkins	=json_object_object_get(pGF->mpJSON, "skins");
+	if(pSkins == NULL)
+	{
+		printf("gltf has no skins.\n");
+		return;
+	}
+
+	if(numNodes != json_object_array_length(pNodes))
+	{
+		printf("Warning!  Scenes node count != nodes array length!\n");
+	}
+
+	Skeleton	*pSkel	=sMakeSkeleton(pNodes, pSkins, pGF->mpBinChunk, pAccs, pBVs);
+
+	const struct json_object	*pAnims	=json_object_object_get(pGF->mpJSON, "animations");
+	if(pAnims == NULL)
+	{
+		printf("gltf has no animations.\n");
+		return;
+	}
+
+	if(*ppALib == NULL)
+	{
+		*ppALib	=AnimLib_Create(pSkel);
+	}
+
+	int	numAnims	=json_object_array_length(pAnims);
+	for(int i=0;i < numAnims;i++)
+	{
+		const struct json_object	*pArr	=json_object_array_get_idx(pAnims, i);
+
+		Anim	*pAnim	=AnimStuff_GrabAnim(pArr, pAccs, pBVs, pGF->mpBinChunk);
+
+		AnimLib_Add(*ppALib, pAnim);
+	}
 }

@@ -181,7 +181,9 @@ static void EscEH(void *pContext, const SDL_Event *pEvt);
 static void AxisEH(void *pContext, const SDL_Event *pEvt);
 
 //button event handlers
-static void sLoadGLTF(AppContext *pAC, Event *pEvt);
+static void sLoadGLTFChar(AppContext *pAC, Event *pEvt);
+static void sLoadGLTFStatic(AppContext *pAC, Event *pEvt);
+static void sLoadGLTFAnim(AppContext *pAC, Event *pEvt);
 static void sLoadCharacter(AppContext *pAC, Event *pEvt);
 static void sSaveCharacter(AppContext *pAC, Event *pEvt);
 static void sLoadStatic(AppContext *pAC, Event *pEvt);
@@ -469,27 +471,31 @@ static AppContext	*sAppCreate(void)
 	//sublayouts for save / load buttons
 	Layout	*pSavLoadMeshLay	=layout_create(2, 3);
 	Layout	*pSavLoadMatLay		=layout_create(1, 2);
-	Layout	*pSavLoadAnimLay	=layout_create(1, 2);
+	Layout	*pSavLoadAnimLay	=layout_create(1, 3);
 
-	Button	*pLGLTF		=button_push();
+	Button	*pLGLTFC	=button_push();
 	Button	*pLChar		=button_push();
 	Button	*pSChar		=button_push();
 	Button	*pLMat		=button_push();
 	Button	*pSMat		=button_push();
+	Button	*pLGLTFA	=button_push();
 	Button	*pLAnim		=button_push();
 	Button	*pSAnim		=button_push();
+	Button	*pLGLTFS	=button_push();
 	Button	*pLStat		=button_push();
 	Button	*pSStat		=button_push();
 	Button	*pAssMat	=button_push();
 	pApp->mpMatStuff	=button_push();
 
-	button_text(pLGLTF, "Load gltf / glb");
+	button_text(pLGLTFC, "Load gltf/glb Char");
 	button_text(pLChar, "Load Character");
 	button_text(pSChar, "Save Character");
+	button_text(pLGLTFS, "Load gltf/glb Static");
 	button_text(pLStat, "Load Static");
 	button_text(pSStat, "Save Static");
 	button_text(pLMat, "Load MatLib");
 	button_text(pSMat, "Save MatLib");
+	button_text(pLGLTFA, "Load gltf/glb Anim");
 	button_text(pLAnim, "Load AnimLib");
 	button_text(pSAnim, "Save AnimLib");
 	button_text(pAssMat, "<- Assign Material <-");
@@ -507,17 +513,19 @@ static AppContext	*sAppCreate(void)
 	layout_layout(pLay, pSavLoadAnimLay, 2, 0);
 
 	//put the buttons within sublayouts
-	layout_button(pSavLoadMeshLay, pLGLTF, 0, 0);
+	layout_button(pSavLoadMeshLay, pLGLTFC, 0, 0);
 	layout_button(pSavLoadMeshLay, pLChar, 0, 1);
 	layout_button(pSavLoadMeshLay, pSChar, 0, 2);
-	layout_button(pSavLoadMeshLay, pLStat, 1, 0);
-	layout_button(pSavLoadMeshLay, pSStat, 1, 1);
+	layout_button(pSavLoadMeshLay, pLGLTFS, 1, 0);
+	layout_button(pSavLoadMeshLay, pLStat, 1, 1);
+	layout_button(pSavLoadMeshLay, pSStat, 1, 2);
 
 	layout_button(pSavLoadMatLay, pLMat, 0, 0);
 	layout_button(pSavLoadMatLay, pSMat, 0, 1);
 
-	layout_button(pSavLoadAnimLay, pLAnim, 0, 0);
-	layout_button(pSavLoadAnimLay, pSAnim, 0, 1);
+	layout_button(pSavLoadAnimLay, pLGLTFA, 0, 0);
+	layout_button(pSavLoadAnimLay, pLAnim, 0, 1);
+	layout_button(pSavLoadAnimLay, pSAnim, 0, 2);
 
 	//center these buttons
 	layout_halign(pSavLoadMeshLay, 0, 0, ekCENTER);
@@ -537,13 +545,15 @@ static AppContext	*sAppCreate(void)
 
 	layout_edit(pEditLay, pApp->mpTextInput, 0, 0);
 
-	button_OnClick(pLGLTF, listener(pApp, sLoadGLTF, AppContext));
+	button_OnClick(pLGLTFC, listener(pApp, sLoadGLTFChar, AppContext));
 	button_OnClick(pLChar, listener(pApp, sLoadCharacter, AppContext));
 	button_OnClick(pSChar, listener(pApp, sSaveCharacter, AppContext));
+	button_OnClick(pLGLTFS, listener(pApp, sLoadGLTFStatic, AppContext));
 	button_OnClick(pLStat, listener(pApp, sLoadStatic, AppContext));
 	button_OnClick(pSStat, listener(pApp, sSaveStatic, AppContext));
 	button_OnClick(pLMat, listener(pApp, sLoadMaterialLib, AppContext));
 	button_OnClick(pSMat, listener(pApp, sSaveMaterialLib, AppContext));
+	button_OnClick(pLGLTFA, listener(pApp, sLoadGLTFAnim, AppContext));
 	button_OnClick(pLAnim, listener(pApp, sLoadAnimLib, AppContext));
 	button_OnClick(pSAnim, listener(pApp, sSaveAnimLib, AppContext));
 	button_OnClick(pAssMat, listener(pApp, sAssignMaterial, AppContext));
@@ -1136,28 +1146,7 @@ static void	AxisEH(void *pContext, const SDL_Event *pEvt)
 	pTS->mbDrawAxis	=!pTS->mbDrawAxis;
 }
 
-static void	sUpdateCharacter(AppContext *pAC, const Mesh *pMesh)
-{
-	//pass along to other gumps
-	SKE_SetCharacter(pAC->mpSKE, pAC->mpChar);
-	RC_SetCharacter(pAC->mpRC, pAC->mpChar);
-
-	printf("Character loaded...\n");
-
-	StringList	*pParts	=Character_GetPartList(pAC->mpChar);
-
-	const StringList	*pCur	=SZList_Iterate(pParts);
-	while(pCur != NULL)
-	{
-		listbox_add_elem(pAC->mpMeshPartLB, SZList_IteratorVal(pCur), NULL);
-
-		pCur	=SZList_IteratorNext(pCur);
-	}
-
-	SZList_Clear(&pParts);
-}
-
-static void sLoadGLTF(AppContext *pAC, Event *pEvt)
+static void sLoadGLTFChar(AppContext *pAC, Event *pEvt)
 {
 	unref(pEvt);
 
@@ -1189,9 +1178,60 @@ static void sLoadGLTF(AppContext *pAC, Event *pEvt)
 		pGF	=GLTF_Create(pFileName);
 	}
 
-	pAC->mpStatic	=GLCV_ExtractStatic(pAC->mpGD, pAC->mpSK, pGF);
+	pAC->mpChar	=GLCV_ExtractChar(pAC->mpGD, pAC->mpSK, pGF);
 
-//	sUpdateCharacter(pAC, pMesh);
+	//pass along to other gumps
+	SKE_SetCharacter(pAC->mpSKE, pAC->mpChar);
+	RC_SetCharacter(pAC->mpRC, pAC->mpChar);
+
+	printf("Character loaded...\n");
+
+	StringList	*pParts	=Character_GetPartList(pAC->mpChar);
+
+	const StringList	*pCur	=SZList_Iterate(pParts);
+	while(pCur != NULL)
+	{
+		listbox_add_elem(pAC->mpMeshPartLB, SZList_IteratorVal(pCur), NULL);
+
+		pCur	=SZList_IteratorNext(pCur);
+	}
+
+	SZList_Clear(&pParts);
+}
+
+static void sLoadGLTFStatic(AppContext *pAC, Event *pEvt)
+{
+	unref(pEvt);
+
+	const char	*fTypes[]	={	"gltf", "glb",	};
+
+	const char	*pFileName	=comwin_open_file(pAC->mpWnd, fTypes, 2, NULL);
+	if(pFileName == NULL)
+	{
+		printf("Empty filename for Load.\n");
+		return;
+	}
+
+	printf("glTF load fileName: %s\n", pFileName);
+
+	if(pAC->mpStatic != NULL)
+	{
+		Static_Destroy(pAC->mpStatic);
+	}
+
+	GLTFFile	*pGF;
+
+	UT_string	*pExt	=SZ_GetExtension(pFileName);
+	if(0 == strncmp(utstring_body(pExt), "glb", 3))
+	{
+		pGF	=GLTF_CreateFromGLB(pFileName);
+	}
+	else
+	{
+		pGF	=GLTF_Create(pFileName);
+	}
+
+	pAC->mpStatic	=GLCV_ExtractStatic(pAC->mpGD, pAC->mpSK, pGF);
 
 	StringList	*pParts	=Static_GetPartList(pAC->mpStatic);
 
@@ -1204,6 +1244,55 @@ static void sLoadGLTF(AppContext *pAC, Event *pEvt)
 	}
 
 	SZList_Clear(&pParts);
+}
+
+static void sLoadGLTFAnim(AppContext *pAC, Event *pEvt)
+{
+	unref(pEvt);
+
+	const char	*fTypes[]	={	"gltf", "glb",	};
+
+	const char	*pFileName	=comwin_open_file(pAC->mpWnd, fTypes, 2, NULL);
+	if(pFileName == NULL)
+	{
+		printf("Empty filename for Load.\n");
+		return;
+	}
+
+	printf("glTF load fileName: %s\n", pFileName);
+
+	GLTFFile	*pGF;
+
+	UT_string	*pExt	=SZ_GetExtension(pFileName);
+	if(0 == strncmp(utstring_body(pExt), "glb", 3))
+	{
+		pGF	=GLTF_CreateFromGLB(pFileName);
+	}
+	else
+	{
+		pGF	=GLTF_Create(pFileName);
+	}
+
+	GLCV_ExtractAndAddAnimation(pGF, &pAC->mpALib);
+
+	//pass along to gumps
+	SKE_SetAnimLib(pAC->mpSKE, pAC->mpALib);
+	RC_SetAnimLib(pAC->mpRC, pAC->mpALib);
+
+	pAC->mpAnimList	=AnimLib_GetAnimList(pAC->mpALib);
+
+	printf("Anim lib loaded...\n");
+
+	const StringList	*pCur	=SZList_Iterate(pAC->mpAnimList);
+
+	while(pCur != NULL)
+	{
+		printf("\t%s\n", SZList_IteratorVal(pCur));
+
+		listbox_add_elem(pAC->mpAnimLB, SZList_IteratorVal(pCur), NULL);
+
+		pCur	=SZList_IteratorNext(pCur);
+	}
 }
 
 static void sLoadCharacter(AppContext *pAC, Event *pEvt)

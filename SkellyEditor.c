@@ -294,10 +294,7 @@ void	SKE_MakeClayLayout(SkellyEditor *pSKE)
 			const Skeleton	*pSkel	=AnimLib_GetSkeleton(pSKE->mpALib);
 			if(pSkel != NULL)
 			{
-				for(int i=0;i < pSkel->mNumRoots;i++)
-				{
-					sSkeletonLayout(pSkel->mpRoots[i], pSKE, NOT_COLLAPSING);
-				}
+				sSkeletonLayout(pSkel->mpRoot, pSKE, NOT_COLLAPSING);
 			}
 			else
 			{
@@ -1444,10 +1441,7 @@ static void	SelectAllEH(void *pContext, const SDL_Event *pEvt)
 
 	const Skeleton	*pSkel	=AnimLib_GetSkeleton(pSKE->mpALib);
 
-	for(int i=0;i < pSkel->mNumRoots;i++)
-	{
-		sSelectAllBones(pSKE, pSkel->mpRoots[i], (pSKE->mShiftHeld <= 0));
-	}
+	sSelectAllBones(pSKE, pSkel->mpRoot, (pSKE->mShiftHeld <= 0));
 }
 
 

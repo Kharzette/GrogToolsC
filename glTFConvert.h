@@ -7,6 +7,6 @@ typedef struct	AnimLib_t			AnimLib;
 typedef struct	StuffKeeper_t		StuffKeeper;
 typedef struct	GraphicsDevice_t	GraphicsDevice;
 
-Static	*GLCV_ExtractStatic(GraphicsDevice *pGD,
-	const StuffKeeper *pSK, const GLTFFile *pGF);
-void		GLCV_ExtractAndAddAnimation(const GLTFFile *pGF, AnimLib *pALib);
+Character	*GLCV_ExtractChar(GraphicsDevice *pGD, const StuffKeeper *pSK, const GLTFFile *pGF);
+Static		*GLCV_ExtractStatic(GraphicsDevice *pGD, const StuffKeeper *pSK, const GLTFFile *pGF);
+void		GLCV_ExtractAndAddAnimation(const GLTFFile *pGF, AnimLib **ppALib);

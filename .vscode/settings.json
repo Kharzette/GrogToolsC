@@ -12,6 +12,10 @@
         "vector": "c",
         "animlib.h": "c",
         "string.h": "c",
-        "character.h": "c"
+        "character.h": "c",
+        "utstring.h": "c",
+        "call.h": "c",
+        "liststuff.h": "c",
+        "mesh.h": "c"
     }
 }
