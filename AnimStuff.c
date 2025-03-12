@@ -137,6 +137,26 @@ Anim	*AnimStuff_GrabAnim(const struct json_object *pAnim,
 		SubAnim_SetBone(ppMerged[i], Skeleton_GetBoneKeyByIndex(pSkel, i), i);
 	}
 
+	//free junk channel anims
+	for(int i=0;i < (numNCs * 3);i++)
+	{
+		free(ppChanSubs[i]);
+	}
+
+	//free samplers
+	free(pSamplers);
+
+	//free nodes
+	{
+		NodeChannel	*pTmp, *pCur;
+
+		HASH_ITER(hh, pNCs, pCur, pTmp)
+		{
+			HASH_DEL(pNCs, pCur);
+			free(pCur);
+		}
+	}
+	
 	return	Anim_Create(pName, ppMerged, numNCs);
 }
 
@@ -384,6 +404,10 @@ static SubAnim	**sMakeSplitSubAnims(const NodeChannel *pNCList,
 			memcpy(&pRKeys[j].mRotation,
 				&pBuf[pOutRotBV->mByteOffset
 					+ (j * sizeof(vec4))], sizeof(vec4));
+			
+			//coordinate system convert
+			pRKeys[j].mRotation[1]	=-pRKeys[j].mRotation[1];
+			pRKeys[j].mRotation[2]	=-pRKeys[j].mRotation[2];
 		}
 
 		//grab translate keys

@@ -262,11 +262,13 @@ static Skeleton	*sMakeSkeleton(const struct json_object *pNodes,
 	int	numNodes	=json_object_array_length(pNodes);
 	int	numSkins	=json_object_array_length(pSkins);
 
+	//exporting metarig too?
 	assert(numSkins == 1);
 	
 	int		ibmAccessIndex	=-1;
 	int		*pJoints		=NULL;
 	mat4	*pIBPs			=NULL;
+	int		numJoints		=0;
 	
 	const struct json_object	*pArr	=json_object_array_get_idx(pSkins, 0);
 	
@@ -288,12 +290,11 @@ static Skeleton	*sMakeSkeleton(const struct json_object *pNodes,
 		{
 			assert(t == json_type_array);
 			
-			int	jarrLen	=json_object_array_length(pVal);
+			numJoints	=json_object_array_length(pVal);			
 			
+			pJoints	=malloc(sizeof(int) * numJoints);
 			
-			pJoints	=malloc(sizeof(int) * jarrLen);
-			
-			for(int j=0;j < jarrLen;j++)
+			for(int j=0;j < numJoints;j++)
 			{
 				const struct json_object	*pJIdx	=
 					json_object_array_get_idx(pVal, j);
@@ -427,6 +428,21 @@ static Skeleton	*sMakeSkeleton(const struct json_object *pNodes,
 			}
 		}
 	}
+
+	//set name with index so it shows up in the
+	//skeleton editor for easier debuggery
+	for(int i=0;i < numNodes;i++)
+	{
+		utstring_printf(pGNs[i].szName, "%d,%d", i, pJoints[i]);
+	}
+
+	//indexes are not the same from file to file
+	//need to build a consistent name to index
+	//and keep it somewhere and fix indexes
+	//when new stuff is loaded
+
+	//convert root node to left handed
+//	GSNode_ConvertToLeftHanded(&pGNs[pJoints[0]]);
 
 	return	Skeleton_Create(&pGNs[pJoints[0]]);
 }
@@ -969,18 +985,9 @@ static void	*sMakeMeshData(GraphicsDevice *pGD,
 			switch(pAccs[acc].mType)
 			{
 				case	TYPE_VEC2:
-					if(bFlip)
-					{
-						Misc_ConvertFlippedUVVec2ToF16(
-							(const float *)&pBin[ofs + (j * glSize)],
-							pSquishSpace[i] + (j * gSize));
-					}
-					else
-					{
-						Misc_ConvertVec2ToF16(
-							(const float *)&pBin[ofs + (j * glSize)],
-							pSquishSpace[i] + (j * gSize));
-					}
+					Misc_ConvertFlippedUVVec2ToF16(
+						(const float *)&pBin[ofs + (j * glSize)],
+						pSquishSpace[i] + (j * gSize));
 				break;
 				case	TYPE_VEC3:
 					Misc_ConvertVec3ToF16((const float *)&pBin[ofs + (j * glSize)],
@@ -1222,7 +1229,7 @@ Character	*GLCV_ExtractChar(GraphicsDevice *pGD,
 	for(int i=0;i < numMeshes;i++)
 	{
 		pMeshArr[i]	=sMakeMeshIndex(pGD, pSK, pMeshes,
-						pGF->mpBinChunk, pAcs, pBVs, false, i);
+						pGF->mpBinChunk, pAcs, pBVs, true, i);
 	}
 
 	Character	*pChar	=Character_Create(pSkin, pMeshArr, numMeshes);
@@ -1345,9 +1352,11 @@ void	GLCV_ExtractAndAddAnimation(const GLTFFile *pGF, AnimLib **ppALib)
 		return;
 	}
 
+	bool	bNeedRemap	=false;
 	if(*ppALib == NULL)
 	{
-		*ppALib	=AnimLib_Create(pSkel);
+		*ppALib		=AnimLib_Create(pSkel);
+		bNeedRemap	=true;
 	}
 
 	int	numAnims	=json_object_array_length(pAnims);
@@ -1357,6 +1366,13 @@ void	GLCV_ExtractAndAddAnimation(const GLTFFile *pGF, AnimLib **ppALib)
 
 		Anim	*pAnim	=AnimStuff_GrabAnim(pArr, pAccs, pBVs, pGF->mpBinChunk, pSkel);
 
-		AnimLib_Add(*ppALib, pAnim);
+		if(bNeedRemap)
+		{
+			AnimLib_AddForeign(*ppALib, pAnim, pSkel);
+		}
+		else
+		{
+			AnimLib_Add(*ppALib, pAnim);
+		}
 	}
 }
