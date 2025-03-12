@@ -10,13 +10,8 @@
 #include	<json-c/json_object_iterator.h>
 #include	<json-c/linkhash.h>
 #include	"json-c/arraylist.h"
+#include	"glTFFile.h"
 
-
-typedef struct	GLTFFile_t
-{
-	struct json_object	*mpJSON;
-	uint8_t				*mpBinChunk;
-}	GLTFFile;
 
 
 static void sReadJSON(FILE *pFile, GLTFFile *pGLTF, uint32_t len)
@@ -139,13 +134,15 @@ GLTFFile	*GLTF_Create(const char *szFileName)
 		return	NULL;
 	}
 
-	char		*pBinFileName;
+	const char	*pBinFileName;
 	uint64_t	binLength;
 
 	struct json_object	*pArr	=json_object_array_get_idx(pBuffs, 0);
 
 	json_object_object_foreach(pArr, pKey, pVal)
 	{
+		pKey	=pKey;	//shutup warning
+
 		enum json_type	t	=json_object_get_type(pVal);
 		if(t == json_type_int)
 		{
@@ -185,4 +182,29 @@ GLTFFile	*GLTF_Create(const char *szFileName)
 	fclose(pBinFile);
 
 	return	pRet;
+}
+
+
+void	GLTF_GetVec4(const struct json_object *pVec, vec4 vec)
+{
+	assert(json_object_get_type(pVec) == json_type_array);
+
+	for(int i=0;i < 4;i++)
+	{
+		const struct json_object	*pVal	=json_object_array_get_idx(pVec, i);
+
+		vec[i]	=json_object_get_double(pVal);
+	}
+}
+
+void	GLTF_GetVec3(const struct json_object *pVec, vec3 vec)
+{
+	assert(json_object_get_type(pVec) == json_type_array);
+
+	for(int i=0;i < 3;i++)
+	{
+		const struct json_object	*pVal	=json_object_array_get_idx(pVec, i);
+
+		vec[i]	=json_object_get_double(pVal);
+	}
 }

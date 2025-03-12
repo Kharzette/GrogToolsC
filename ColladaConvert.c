@@ -1178,7 +1178,7 @@ static void sLoadGLTFChar(AppContext *pAC, Event *pEvt)
 		pGF	=GLTF_Create(pFileName);
 	}
 
-	pAC->mpChar	=GLCV_ExtractChar(pAC->mpGD, pAC->mpSK, pGF);
+	pAC->mpChar	=GLCV_ExtractChar(pAC->mpGD, pAC->mpALib, pAC->mpSK, pGF);
 
 	//pass along to other gumps
 	SKE_SetCharacter(pAC->mpSKE, pAC->mpChar);

@@ -15,68 +15,10 @@
 #include	"MeshLib/Skeleton.h"
 #include	"MeshLib/AnimLib.h"
 #include	"MeshLib/Anim.h"
+#include	"MeshLib/GSNode.h"
 #include	"MeshLib/SubAnim.h"
-
-
-#define	TYPE_SCALAR	0
-#define	TYPE_VEC2	1
-#define	TYPE_VEC3	2
-#define	TYPE_VEC4	3
-#define	TYPE_MAT2	4
-#define	TYPE_MAT3	5
-#define	TYPE_MAT4	6
-
-#define	CTYPE_BYTE		5120
-#define	CTYPE_UBYTE		5121
-#define	CTYPE_SHORT		5122
-#define	CTYPE_USHORT	5123
-#define	CTYPE_UINT		5125
-#define	CTYPE_FLOAT		5126
-
-#define	TARG_TRANSLATION	0
-#define	TARG_ROTATION		1
-#define	TARG_SCALE			2
-
-#define	INTERP_LINEAR		0
-#define	INTERP_STEP			1
-#define	INTERP_CUBICSPLINE	2
-
-
-typedef struct	NodeChannel_t
-{
-	int	id;
-
-	int	sampTrans;
-	int	sampRot;
-	int	sampScale;
-
-	UT_hash_handle	hh;
-}	NodeChannel;
-
-typedef struct	Sampler_t
-{
-	int	accInput;
-	int	accOutput;
-	int	interp;
-}	Sampler;
-
-typedef struct	Accessor_t
-{
-	int	mType;
-	int	mComponentType;
-	int	mCount;
-	int	mBufferView;
-
-	vec3	mMin, mMax;
-}	Accessor;
-
-typedef struct	BufferView_t
-{
-	int	mBufIdx;
-	int	mByteLength;
-	int	mByteOffset;
-	int	mTarget;
-}	BufferView;
+#include	"glTFTypes.h"
+#include	"glTFFile.h"
 
 
 //static forward decs
@@ -160,6 +102,187 @@ Anim	*AnimStuff_GrabAnim(const struct json_object *pAnim,
 	return	Anim_Create(pName, ppMerged, numNCs);
 }
 
+Skeleton	*AnimStuff_GrabSkeleton(const struct json_object *pNodes,
+									const struct json_object *pSkins,
+									const uint8_t *pBin,
+									const Accessor *pAccs,
+									const BufferView *pBVs)
+{
+	int	numNodes	=json_object_array_length(pNodes);
+	int	numSkins	=json_object_array_length(pSkins);
+
+	//exporting metarig too?
+	assert(numSkins == 1);
+	
+	int		*pJoints		=NULL;
+	int		numJoints		=0;
+	
+	const struct json_object	*pArr	=json_object_array_get_idx(pSkins, 0);
+	
+	json_object_object_foreach(pArr, pKey, pVal)
+	{
+		enum json_type	t	=json_object_get_type(pVal);
+		printf("KeyValue: %s : %s,%s\n", pKey, json_type_to_name(t),
+			json_object_get_string(pVal));
+		
+		if(0 == strncmp("inverseBindMatrices", pKey, 19))
+		{
+			assert(t == json_type_int);
+		}
+		else if(0 == strncmp("joints", pKey, 19))
+		{
+			assert(t == json_type_array);
+			
+			numJoints	=json_object_array_length(pVal);			
+			
+			pJoints	=malloc(sizeof(int) * numJoints);
+			
+			for(int j=0;j < numJoints;j++)
+			{
+				const struct json_object	*pJIdx	=
+					json_object_array_get_idx(pVal, j);
+					
+				pJoints[j]	=json_object_get_int(pJIdx);
+			}
+		}
+		else if(0 == strncmp("name", pKey, 4))
+		{
+			assert(t == json_type_string);			
+		}
+	}
+
+	GSNode	*pGNs	=malloc(sizeof(GSNode) * numNodes);
+
+	for(int i=0;i < numNodes;i++)
+	{
+		vec3		scale	={1,1,1};
+		vec4		rot		={0,0,0,1};
+		vec3		trans	={0,0,0};
+		UT_string	*pName	=NULL;
+
+		int		numKids		=0;
+
+		printf("Node %d\n", i);
+
+		const struct json_object	*pArr	=json_object_array_get_idx(pNodes, i);
+
+		json_object_object_foreach(pArr, pKey, pVal)
+		{
+			enum json_type	t	=json_object_get_type(pVal);
+			printf("KeyValue: %s : %s,%s\n", pKey, json_type_to_name(t),
+				json_object_get_string(pVal));
+			
+			if(0 == strncmp("name", pKey, 4))
+			{
+				assert(t == json_type_string);
+
+				utstring_new(pName);
+
+				utstring_printf(pName, "%s", json_object_get_string(pVal));
+			}
+			else if(0 == strncmp("rotation", pKey, 8))
+			{
+				assert(t == json_type_array);
+
+				GLTF_GetVec4(pVal, rot);
+			}
+			else if(0 == strncmp("scale", pKey, 8))
+			{
+				assert(t == json_type_array);
+
+				GLTF_GetVec3(pVal, scale);
+			}
+			else if(0 == strncmp("translation", pKey, 8))
+			{
+				assert(t == json_type_array);
+
+				GLTF_GetVec3(pVal, trans);
+			}
+			else if(0 == strncmp("children", pKey, 8))
+			{
+				assert(t == json_type_array);
+
+				numKids	=json_object_array_length(pVal);
+			}
+			else if(0 == strncmp("mesh", pKey, 4))
+			{
+				assert(t == json_type_int);
+			}
+			else if(0 == strncmp("skin", pKey, 4))
+			{
+				assert(t == json_type_int);
+			}
+			else
+			{
+				assert(false);
+			}
+		}
+
+		pGNs[i].szName			=pName;
+		pGNs[i].mNumChildren	=numKids;
+		pGNs[i].mIndex			=i;
+
+		if(numKids > 0)
+		{
+			pGNs[i].mpChildren	=malloc(sizeof(GSNode *) * numKids);
+		}
+		else
+		{
+			pGNs[i].mpChildren	=NULL;
+		}
+
+		glm_vec3_copy(trans, pGNs[i].mKeyValue.mPosition);
+		glm_vec3_copy(scale, pGNs[i].mKeyValue.mScale);
+		glm_vec4_copy(rot, pGNs[i].mKeyValue.mRotation);
+	}
+
+	//fix up the children
+	for(int i=0;i < numNodes;i++)
+	{
+		if(pGNs[i].mNumChildren <= 0)
+		{
+			continue;
+		}
+
+		const struct json_object	*pArr	=json_object_array_get_idx(pNodes, i);
+
+		json_object_object_foreach(pArr, pKey, pVal)
+		{			
+			enum json_type	t	=json_object_get_type(pVal);
+
+			if(0 == strncmp("children", pKey, 8))
+			{
+				assert(t == json_type_array);
+
+				for(int j=0;j < pGNs[i].mNumChildren;j++)
+				{
+					const struct json_object	*pIdx	=
+						json_object_array_get_idx(pVal, j);
+
+					pGNs[i].mpChildren[j]	=&pGNs[json_object_get_int(pIdx)];
+				}
+			}
+		}
+	}
+
+	//set name with index so it shows up in the
+	//skeleton editor for easier debuggery
+	for(int i=0;i < numNodes;i++)
+	{
+		utstring_printf(pGNs[i].szName, "%d,%d", i, pJoints[i]);
+	}
+
+	//indexes are not the same from file to file
+	//need to build a consistent name to index
+	//and keep it somewhere and fix indexes
+	//when new stuff is loaded
+
+	//convert root node to left handed
+//	GSNode_ConvertToLeftHanded(&pGNs[pJoints[0]]);
+
+	return	Skeleton_Create(&pGNs[pJoints[0]]);
+}
+	
 
 static Sampler	*sMakeAnimSamplers(const struct json_object *pSamplers)
 {
@@ -169,13 +292,6 @@ static Sampler	*sMakeAnimSamplers(const struct json_object *pSamplers)
 
 	for(int i=0;i < numSamp;i++)
 	{
-		vec3	scale		={1,1,1};
-		vec4	rot			={0,0,0,1};
-		vec3	trans		={0,0,0};
-		int		samp		=-1;
-		int		targNode	=-1;
-		int		targPath	=-1;
-
 		printf("Samp %d\n", i);
 
 		const struct json_object	*pArr	=json_object_array_get_idx(pSamplers, i);
@@ -224,9 +340,6 @@ static NodeChannel	*sMakeChannels(const struct json_object *pChannels,
 {
 	int	numChannels	=json_object_array_length(pChannels);
 
-	int	meshIdx	=-1;
-	int	skinIdx	=-1;
-
 	//count up the bones affected
 	NodeChannel	*pNCs		=NULL;
 	int			numAffected	=0;
@@ -237,6 +350,8 @@ static NodeChannel	*sMakeChannels(const struct json_object *pChannels,
 		const struct json_object	*pArr	=json_object_array_get_idx(pChannels, i);
 		json_object_object_foreach(pArr, pKey, pVal)
 		{
+			pKey	=pKey;	//shutup warning
+
 			enum json_type	t	=json_object_get_type(pVal);
 			if(t != json_type_int)
 			{
@@ -264,12 +379,8 @@ static NodeChannel	*sMakeChannels(const struct json_object *pChannels,
 	//grab channel data
 	for(int i=0;i < numChannels;i++)
 	{
-		vec3	scale		={1,1,1};
-		vec4	rot			={0,0,0,1};
-		vec3	trans		={0,0,0};
 		int		samp		=-1;
 		int		targNode	=-1;
-		int		targPath	=-1;
 
 		printf("Channel %d\n", i);
 
@@ -307,17 +418,14 @@ static NodeChannel	*sMakeChannels(const struct json_object *pChannels,
 
 						if(0 == strncmp(pPath, "translation", 11))
 						{
-							targPath		=TARG_TRANSLATION;
 							pNC->sampTrans	=samp;
 						}
 						else if(0 == strncmp(pPath, "rotation", 8))
 						{
-							targPath		=TARG_ROTATION;
 							pNC->sampRot	=samp;
 						}
 						else if(0 == strncmp(pPath, "scale", 5))
 						{
-							targPath		=TARG_SCALE;
 							pNC->sampScale	=samp;
 						}
 						else
@@ -354,14 +462,14 @@ static SubAnim	**sMakeSplitSubAnims(const NodeChannel *pNCList,
 
 	for(const NodeChannel *pNC=pNCList;pNC != NULL;pNC=pNC->hh.next)
 	{
-		Accessor	*pInpRot	=&pAccs[pSamps[pNC->sampRot].accInput];
-		Accessor	*pOutRot	=&pAccs[pSamps[pNC->sampRot].accOutput];
+		const Accessor	*pInpRot	=&pAccs[pSamps[pNC->sampRot].accInput];
+		const Accessor	*pOutRot	=&pAccs[pSamps[pNC->sampRot].accOutput];
 
-		Accessor	*pInpTrans	=&pAccs[pSamps[pNC->sampTrans].accInput];
-		Accessor	*pOutTrans	=&pAccs[pSamps[pNC->sampTrans].accOutput];
+		const Accessor	*pInpTrans	=&pAccs[pSamps[pNC->sampTrans].accInput];
+		const Accessor	*pOutTrans	=&pAccs[pSamps[pNC->sampTrans].accOutput];
 
-		Accessor	*pInpScale	=&pAccs[pSamps[pNC->sampScale].accInput];
-		Accessor	*pOutScale	=&pAccs[pSamps[pNC->sampScale].accOutput];
+		const Accessor	*pInpScale	=&pAccs[pSamps[pNC->sampScale].accInput];
+		const Accessor	*pOutScale	=&pAccs[pSamps[pNC->sampScale].accOutput];
 
 		//should be the same number of times as keys
 		assert(pInpRot->mCount == pOutRot->mCount);
@@ -380,17 +488,17 @@ static SubAnim	**sMakeSplitSubAnims(const NodeChannel *pNCList,
 		assert(pOutTrans->mType == TYPE_VEC3);
 		assert(pOutScale->mType == TYPE_VEC3);
 
-		BufferView	*pInpRotBV		=&pBVs[pInpRot->mBufferView];
-		BufferView	*pInpTransBV	=&pBVs[pInpTrans->mBufferView];
-		BufferView	*pInpScaleBV	=&pBVs[pInpScale->mBufferView];
+		const BufferView	*pInpRotBV		=&pBVs[pInpRot->mBufferView];
+		const BufferView	*pInpTransBV	=&pBVs[pInpTrans->mBufferView];
+		const BufferView	*pInpScaleBV	=&pBVs[pInpScale->mBufferView];
 
-		float	*pRTimes	=(float *)&pBuf[pInpRotBV->mByteOffset];
-		float	*pTTimes	=(float *)&pBuf[pInpTransBV->mByteOffset];
-		float	*pSTimes	=(float *)&pBuf[pInpScaleBV->mByteOffset];
+		const float	*pRTimes	=(float *)&pBuf[pInpRotBV->mByteOffset];
+		const float	*pTTimes	=(float *)&pBuf[pInpTransBV->mByteOffset];
+		const float	*pSTimes	=(float *)&pBuf[pInpScaleBV->mByteOffset];
 
-		BufferView	*pOutRotBV		=&pBVs[pOutRot->mBufferView];
-		BufferView	*pOutTransBV	=&pBVs[pOutTrans->mBufferView];
-		BufferView	*pOutScaleBV	=&pBVs[pOutScale->mBufferView];
+		const BufferView	*pOutRotBV		=&pBVs[pOutRot->mBufferView];
+		const BufferView	*pOutTransBV	=&pBVs[pOutTrans->mBufferView];
+		const BufferView	*pOutScaleBV	=&pBVs[pOutScale->mBufferView];
 
 		KeyFrame	*pRKeys	=malloc(sizeof(KeyFrame) * pOutRot->mCount);
 		KeyFrame	*pTKeys	=malloc(sizeof(KeyFrame) * pOutTrans->mCount);
@@ -406,8 +514,8 @@ static SubAnim	**sMakeSplitSubAnims(const NodeChannel *pNCList,
 					+ (j * sizeof(vec4))], sizeof(vec4));
 			
 			//coordinate system convert
-			pRKeys[j].mRotation[1]	=-pRKeys[j].mRotation[1];
-			pRKeys[j].mRotation[2]	=-pRKeys[j].mRotation[2];
+//			pRKeys[j].mRotation[1]	=-pRKeys[j].mRotation[1];
+//			pRKeys[j].mRotation[2]	=-pRKeys[j].mRotation[2];
 		}
 
 		//grab translate keys
