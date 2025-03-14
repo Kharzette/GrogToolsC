@@ -21,8 +21,8 @@ Mesh	*MeshStuff_MakeMeshIndex(GraphicsDevice *pGD,
 	const BufferView *pBVs, const SkellyMap *pSMap,
 	bool bFlipZ, int index);
 
-void	MeshStuff_GetPartTransforms(const struct json_object *pNodes,
-	mat4 xForms[], bool bFlipZTranslations, int numParts);
+void	MeshStuff_GetStaticPartTransforms(const struct json_object *pNodes,
+	mat4 xForms[], int numParts);
 
 Skin	*MeshStuff_GrabSkins(const struct json_object *pSkins,
 	const uint8_t *pBin, const Accessor *pAccs,

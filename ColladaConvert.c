@@ -139,6 +139,7 @@ typedef struct AppContext_t
 typedef void	(*ReNameFunc)(void *, const char *, const char *);
 
 //static forward decs
+static void				sFillAnimListBox(AppContext *pAC);
 static void				sSetupKeyBinds(Input *pInp);
 static void				SetupRastVP(AppContext *pApp);
 static const Image		*sMakeSmallVColourBox(vec3 colour);
@@ -1196,6 +1197,8 @@ static void sLoadGLTFChar(AppContext *pAC, Event *pEvt)
 		pCur	=SZList_IteratorNext(pCur);
 	}
 
+	GLTF_Destroy(pGF);
+
 	SZList_Clear(&pParts);
 }
 
@@ -1243,6 +1246,8 @@ static void sLoadGLTFStatic(AppContext *pAC, Event *pEvt)
 		pCur	=SZList_IteratorNext(pCur);
 	}
 
+	GLTF_Destroy(pGF);
+
 	SZList_Clear(&pParts);
 }
 
@@ -1279,20 +1284,11 @@ static void sLoadGLTFAnim(AppContext *pAC, Event *pEvt)
 	SKE_SetAnimLib(pAC->mpSKE, pAC->mpALib);
 	RC_SetAnimLib(pAC->mpRC, pAC->mpALib);
 
-	pAC->mpAnimList	=AnimLib_GetAnimList(pAC->mpALib);
+	printf("Anim loaded %s...\n", pFileName);
 
-	printf("Anim lib loaded...\n");
+	sFillAnimListBox(pAC);
 
-	const StringList	*pCur	=SZList_Iterate(pAC->mpAnimList);
-
-	while(pCur != NULL)
-	{
-		printf("\t%s\n", SZList_IteratorVal(pCur));
-
-		listbox_add_elem(pAC->mpAnimLB, SZList_IteratorVal(pCur), NULL);
-
-		pCur	=SZList_IteratorNext(pCur);
-	}
+	GLTF_Destroy(pGF);
 }
 
 static void sLoadCharacter(AppContext *pAC, Event *pEvt)
@@ -1536,20 +1532,9 @@ static void sLoadAnimLib(AppContext *pAC, Event *pEvt)
 	SKE_SetAnimLib(pAC->mpSKE, pAC->mpALib);
 	RC_SetAnimLib(pAC->mpRC, pAC->mpALib);
 
-	pAC->mpAnimList	=AnimLib_GetAnimList(pAC->mpALib);
-
 	printf("Anim lib loaded...\n");
 
-	const StringList	*pCur	=SZList_Iterate(pAC->mpAnimList);
-
-	while(pCur != NULL)
-	{
-		printf("\t%s\n", SZList_IteratorVal(pCur));
-
-		listbox_add_elem(pAC->mpAnimLB, SZList_IteratorVal(pCur), NULL);
-
-		pCur	=SZList_IteratorNext(pCur);
-	}
+	sFillAnimListBox(pAC);
 }
 
 static void sSaveAnimLib(AppContext *pAC, Event *pEvt)
@@ -2079,6 +2064,7 @@ static void sOnHotKeyReName(AppContext *pAC, Event *pEvt)
 		uint32_t	result	=sSpawnReName(pAC, goodPos,
 			szOld, pLB, pAC->mpALib, (ReNameFunc)AnimLib_ReName);
 		printf("AnimBox %d\n", result);
+		sFillAnimListBox(pAC);
 	}
 	else if(pLB == pAC->mpMaterialLB)
 	{
@@ -2220,25 +2206,57 @@ static void sMeshSelectionChanged(AppContext *pAC, Event *pEvt)
 
 	const char	*szMesh	=listbox_text(pAC->mpMeshPartLB, seld);
 
+	bool	bFound	=false;
 	if(pAC->mpChar != NULL)
 	{
 		const char	*szMat	=Character_GetMaterialForPart(pAC->mpChar, szMesh);
-		if(sSelectListBoxItem(pAC->mpMaterialLB, szMat))
+		if(szMat != NULL)
 		{
-			sMatSelectionChanged(pAC, NULL);
+			if(sSelectListBoxItem(pAC->mpMaterialLB, szMat))
+			{
+				bFound	=true;
+				sMatSelectionChanged(pAC, NULL);
+			}
 		}
 	}
-	else if(pAC->mpStatic != NULL)
+
+	if(pAC->mpStatic != NULL && !bFound)
 	{
 		const char	*szMat	=Static_GetMaterialForPart(pAC->mpStatic, szMesh);
-		if(sSelectListBoxItem(pAC->mpMaterialLB, szMat))
+		if(szMat != NULL)
 		{
-			sMatSelectionChanged(pAC, NULL);
+			if(sSelectListBoxItem(pAC->mpMaterialLB, szMat))
+			{
+				sMatSelectionChanged(pAC, NULL);
+			}
 		}
 	}
 	else
 	{
 		return;
+	}
+}
+
+static void	sFillAnimListBox(AppContext *pAC)
+{
+	if(pAC->mpAnimList != NULL)
+	{
+		SZList_Clear(&pAC->mpAnimList);
+	}
+
+	pAC->mpAnimList	=AnimLib_GetAnimList(pAC->mpALib);
+
+	listbox_clear(pAC->mpAnimLB);
+
+	const StringList	*pCur	=SZList_Iterate(pAC->mpAnimList);
+
+	while(pCur != NULL)
+	{
+		printf("\t%s\n", SZList_IteratorVal(pCur));
+
+		listbox_add_elem(pAC->mpAnimLB, SZList_IteratorVal(pCur), NULL);
+
+		pCur	=SZList_IteratorNext(pCur);
 	}
 }
 

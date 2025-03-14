@@ -28,10 +28,10 @@ static void sReadJSON(FILE *pFile, GLTFFile *pGLTF, uint32_t len)
 
 	free(pBuf);
 
-	json_object_object_foreach(pGLTF->mpJSON, pKey, pVal)
-	{
-		printf("KeyValue: %s : %s\n", pKey, json_object_get_string(pVal));
-	}
+//	json_object_object_foreach(pGLTF->mpJSON, pKey, pVal)
+//	{
+//		printf("KeyValue: %s : %s\n", pKey, json_object_get_string(pVal));
+//	}
 }
 
 static void	sReadChunk(FILE *pFile, GLTFFile *pGLTF)
@@ -207,4 +207,13 @@ void	GLTF_GetVec3(const struct json_object *pVec, vec3 vec)
 
 		vec[i]	=json_object_get_double(pVal);
 	}
+}
+
+void	GLTF_Destroy(GLTFFile *pGF)
+{
+	json_object_put(pGF->mpJSON);
+
+	free(pGF->mpBinChunk);
+
+	free(pGF);
 }

@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-std=gnu2x -g -O0 -march=native				\
+CFLAGS=-std=gnu23 -g -O0 -march=native				\
 	-DCGLM_FORCE_DEPTH_ZERO_TO_ONE					\
 	-DCGLM_FORCE_LEFT_HANDED						\
 	-IGrogLibsC/uthash/src							\

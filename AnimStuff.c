@@ -42,8 +42,8 @@ Anim	*AnimStuff_GrabAnim(const struct json_object *pAnim,
 	json_object_object_foreach(pAnim, pKey, pVal)
 	{
 		enum json_type	t	=json_object_get_type(pVal);
-		printf("AnimKeyValue: %s : %s,%s\n", pKey, json_type_to_name(t),
-			json_object_get_string(pVal));
+//		printf("AnimKeyValue: %s : %s,%s\n", pKey, json_type_to_name(t),
+//			json_object_get_string(pVal));
 
 		if(t == json_type_string)
 		{
@@ -78,6 +78,9 @@ Anim	*AnimStuff_GrabAnim(const struct json_object *pAnim,
 		
 		SubAnim_SetBone(ppMerged[i], Skeleton_GetBoneKeyByIndex(pSkel, i), i);
 	}
+
+	//free fake bone targets
+	free(pTargets);
 
 	//free junk channel anims
 	for(int i=0;i < (numNCs * 3);i++)
@@ -122,8 +125,8 @@ Skeleton	*AnimStuff_GrabSkeleton(const struct json_object *pNodes,
 	json_object_object_foreach(pArr, pKey, pVal)
 	{
 		enum json_type	t	=json_object_get_type(pVal);
-		printf("KeyValue: %s : %s,%s\n", pKey, json_type_to_name(t),
-			json_object_get_string(pVal));
+//		printf("KeyValue: %s : %s,%s\n", pKey, json_type_to_name(t),
+//			json_object_get_string(pVal));
 		
 		if(0 == strncmp("inverseBindMatrices", pKey, 19))
 		{
@@ -162,15 +165,15 @@ Skeleton	*AnimStuff_GrabSkeleton(const struct json_object *pNodes,
 
 		int		numKids		=0;
 
-		printf("Node %d\n", i);
+//		printf("Node %d\n", i);
 
 		const struct json_object	*pArr	=json_object_array_get_idx(pNodes, i);
 
 		json_object_object_foreach(pArr, pKey, pVal)
 		{
 			enum json_type	t	=json_object_get_type(pVal);
-			printf("KeyValue: %s : %s,%s\n", pKey, json_type_to_name(t),
-				json_object_get_string(pVal));
+//			printf("KeyValue: %s : %s,%s\n", pKey, json_type_to_name(t),
+//				json_object_get_string(pVal));
 			
 			if(0 == strncmp("name", pKey, 4))
 			{
@@ -184,7 +187,7 @@ Skeleton	*AnimStuff_GrabSkeleton(const struct json_object *pNodes,
 			{
 				assert(t == json_type_array);
 
-				GLTF_GetVec4(pVal, rot);
+				GLTF_GetVec4(pVal, rot); 
 			}
 			else if(0 == strncmp("scale", pKey, 8))
 			{
@@ -280,7 +283,12 @@ Skeleton	*AnimStuff_GrabSkeleton(const struct json_object *pNodes,
 	//convert root node to left handed
 //	GSNode_ConvertToLeftHanded(&pGNs[pJoints[0]]);
 
-	return	Skeleton_Create(&pGNs[pJoints[0]]);
+	//seems like joint 0 is the root
+	Skeleton	*pRet	=Skeleton_Create(&pGNs[pJoints[0]]);
+
+	free(pJoints);
+
+	return	pRet;
 }
 	
 
@@ -292,15 +300,15 @@ static Sampler	*sMakeAnimSamplers(const struct json_object *pSamplers)
 
 	for(int i=0;i < numSamp;i++)
 	{
-		printf("Samp %d\n", i);
+//		printf("Samp %d\n", i);
 
 		const struct json_object	*pArr	=json_object_array_get_idx(pSamplers, i);
 
 		json_object_object_foreach(pArr, pKey, pVal)
 		{
-			enum json_type	t	=json_object_get_type(pVal);
-			printf("KeyValue: %s : %s,%s\n", pKey, json_type_to_name(t),
-				json_object_get_string(pVal));
+//			enum json_type	t	=json_object_get_type(pVal);
+//			printf("KeyValue: %s : %s,%s\n", pKey, json_type_to_name(t),
+//				json_object_get_string(pVal));
 
 			if(0 == strncmp("input", pKey, 5))
 			{
@@ -382,15 +390,17 @@ static NodeChannel	*sMakeChannels(const struct json_object *pChannels,
 		int		samp		=-1;
 		int		targNode	=-1;
 
-		printf("Channel %d\n", i);
+//		printf("Channel %d\n", i);
 
 		const struct json_object	*pArr	=json_object_array_get_idx(pChannels, i);
 
 		json_object_object_foreach(pArr, pKey, pVal)
 		{
+			pKey	=pKey;
+
 			enum json_type	t	=json_object_get_type(pVal);
-			printf("KeyValue: %s : %s,%s\n", pKey, json_type_to_name(t),
-				json_object_get_string(pVal));
+//			printf("KeyValue: %s : %s,%s\n", pKey, json_type_to_name(t),
+//				json_object_get_string(pVal));
 
 			if(t == json_type_int)
 			{
@@ -400,9 +410,9 @@ static NodeChannel	*sMakeChannels(const struct json_object *pChannels,
 			{
 				json_object_object_foreach(pVal, pKey2, pVal2)
 				{
-					enum json_type	t2	=json_object_get_type(pVal);
-					printf("KeyValue2: %s : %s,%s\n", pKey2, json_type_to_name(t2),
-						json_object_get_string(pVal2));
+//					enum json_type	t2	=json_object_get_type(pVal);
+//					printf("KeyValue2: %s : %s,%s\n", pKey2, json_type_to_name(t2),
+//						json_object_get_string(pVal2));
 					
 					if(0 == strncmp("node", pKey2, 4))
 					{
@@ -446,7 +456,7 @@ static NodeChannel	*sMakeChannels(const struct json_object *pChannels,
 static SubAnim	**sMakeSplitSubAnims(const NodeChannel *pNCList,
 	const Sampler *pSamps, const Accessor *pAccs,
 	const BufferView *pBVs, const uint8_t *pBuf,
-	KeyFrame **ppTargets,	int numNC)
+	KeyFrame **ppTargets, int numNC)
 {
 	SubAnim	**ppSubs	=malloc(sizeof(SubAnim *) * numNC * 3);
 
@@ -526,6 +536,9 @@ static SubAnim	**sMakeSplitSubAnims(const NodeChannel *pNCList,
 			memcpy(&pTKeys[j].mPosition,
 				&pBuf[pOutTransBV->mByteOffset
 					+ (j * sizeof(vec3))], sizeof(vec3));
+			
+			//coordinate system convert
+//			pTKeys[j].mPosition[0]	=-pTKeys[j].mPosition[0];
 		}
 
 		//grab scale keys
@@ -536,6 +549,9 @@ static SubAnim	**sMakeSplitSubAnims(const NodeChannel *pNCList,
 			memcpy(&pSKeys[j].mScale,
 				&pBuf[pOutScaleBV->mByteOffset
 					+ (j * sizeof(vec3))], sizeof(vec3));
+
+			//coordinate system convert
+//			pTKeys[j].mScale[0]	=-pTKeys[j].mScale[0];
 		}
 
 		int	subIdx	=pNC->id * 3;

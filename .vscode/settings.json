@@ -16,6 +16,7 @@
         "utstring.h": "c",
         "call.h": "c",
         "liststuff.h": "c",
-        "mesh.h": "c"
+        "mesh.h": "c",
+        "gltffile.h": "c"
     }
 }

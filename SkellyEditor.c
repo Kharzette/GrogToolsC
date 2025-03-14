@@ -139,7 +139,7 @@ SkellyEditor	*SKE_Create(StuffKeeper *pSK, GraphicsDevice *pGD,
 	pRet->mpTriSolidSpec	=StuffKeeper_GetPixelShader(pSK, "TriSolidSpecPS");
 
 	//prims
-	pRet->mpCube	=PF_CreateCube(1.0f, true, pGD);
+	pRet->mpCube	=PF_CreateCube(1.0f, false, pGD);
 	pRet->mpSphere	=PF_CreateSphere((vec3){0,0,0}, 1.0f, pGD);
 	pRet->mpCapsule	=PF_CreateCapsule(1.0f, 4.0f, pGD);
 
@@ -326,7 +326,7 @@ void	SKE_MakeClayLayout(SkellyEditor *pSKE)
 					.padding = {16, 16, 16, 16 },
 					.childGap = 16
 				},
-				.border = { .color = {80, 80, 80, 255}, .width = 2 },
+				.border = { .color = {80, 80, 80, 255}, .width = CLAY_BORDER_ALL(2) },
 				.backgroundColor =  {150, 150, 155, 55}})
 			{
 				CLAY_TEXT(csInfo, CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 70, 70, 155} }));
@@ -704,49 +704,48 @@ static void sSkeletonLayout(const GSNode *pNode, SkellyEditor *pSKE, int colStat
 		cs.height	=CLAY_SIZING_FIXED(colAmount[0]);
 	}
 
-	//create an inner rect sized for the text
-	Clay__OpenElement();
-
-	//this one will have the bone name as an ID
-	Clay__AttachId(Clay__HashString(csNode, 0, 0));
-
-	Clay_ElementDeclaration	ced2	={	.layout = { .childGap = 4,
-		.padding = { 8, 8, 2, 2 },	.sizing = cs},
-		.cornerRadius = { 6 }, .backgroundColor = bSelected?
-			COLOR_GOLD : (Clay_Hovered()? COLOR_ORANGE : COLOR_BLUE) };
-	
-	//is this where this goes?
-	Clay_OnHover(sOnHoverBone, (intptr_t)pSKE);
-
-	Clay__ConfigureOpenElement(ced2);
-	
 	//keep the passed in state
 	int	childColState	=colState;
-	if(bHasKids)
-	{
-		if(bCollapsed)
-		{
-			CLAY_TEXT(CLAY_STRING("+"), CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 0, 0, 255} }));
-			if(bAnimating)
-			{
-				//if this node is collapsing, squish child nodes
-				childColState	=COLLAPSING;
-			}
-		}
-		else
-		{
-			CLAY_TEXT(CLAY_STRING("-"), CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 0, 0, 255} }));
-			if(bAnimating)
-			{
-				//if this node is animating, grow child nodes
-				childColState	=GROWING;
-			}
-		}
-	}
-	CLAY_TEXT(csNode, CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 0, 0, 255} })),
 
-	//this closes the inner text nubbins
-	Clay__CloseElement();
+	//create an inner rect sized for the text
+	//this one will have the bone name as an ID
+	CLAY({ .id =Clay__HashString(csNode, 0, 0),
+		.layout = {
+			.childGap = 4,
+			.padding = { 8, 8, 2, 2 },
+			.sizing = cs
+		},
+		.cornerRadius = { 6 },
+		.backgroundColor = bSelected?
+			COLOR_GOLD : (Clay_Hovered()? COLOR_ORANGE : COLOR_BLUE)
+		})
+	{
+		//is this where this goes?
+		Clay_OnHover(sOnHoverBone, (intptr_t)pSKE);
+
+		if(bHasKids)
+		{
+			if(bCollapsed)
+			{
+				CLAY_TEXT(CLAY_STRING("+"), CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 0, 0, 255} }));
+				if(bAnimating)
+				{
+					//if this node is collapsing, squish child nodes
+					childColState	=COLLAPSING;
+				}
+			}
+			else
+			{
+				CLAY_TEXT(CLAY_STRING("-"), CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 0, 0, 255} }));
+				if(bAnimating)
+				{
+					//if this node is animating, grow child nodes
+					childColState	=GROWING;
+				}
+			}
+		}
+		CLAY_TEXT(csNode, CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 0, 0, 255} }));
+	}	//this closes the inner text nubbins
 
 	//see if collapsed, if so recurse no further
 	if(bCollapsed && !bAnimating)

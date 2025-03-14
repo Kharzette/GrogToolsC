@@ -36,13 +36,15 @@ static int	sGetSceneNodeCount(const struct json_object *pScenes)
 
 	json_object_object_foreach(pArr, pKey, pVal)
 	{
+		pKey	=pKey;	//shutup warning
+
 		enum json_type	t	=json_object_get_type(pVal);
 		if(t == json_type_array)
 		{
 			const struct json_object	*pCount	=json_object_array_get_idx(pVal, 0);
 			return	json_object_get_int(pCount);
 		}
-		printf("KeyValue: %s : %s\n", pKey, json_object_get_string(pVal));
+//		printf("KeyValue: %s : %s\n", pKey, json_object_get_string(pVal));
 	}
 	return	-1;
 }
@@ -55,15 +57,15 @@ static Accessor	*sReadAccessors(const struct json_object *pAcc)
 
 	for(int i=0;i < numAcc;i++)
 	{
-		printf("Accessor %d\n", i);
+//		printf("Accessor %d\n", i);
 
 		const struct json_object	*pArr	=json_object_array_get_idx(pAcc, i);
 
 		json_object_object_foreach(pArr, pKey, pVal)
 		{
 			enum json_type	t	=json_object_get_type(pVal);
-			printf("KeyValue: %s : %s,%s\n", pKey, json_type_to_name(t),
-				json_object_get_string(pVal));
+//			printf("KeyValue: %s : %s,%s\n", pKey, json_type_to_name(t),
+//				json_object_get_string(pVal));
 			
 			if(0 == strncmp("bufferView", pKey, 10))
 			{
@@ -153,15 +155,15 @@ static BufferView	*sGetBufferViews(const struct json_object *pBV)
 
 	for(int i=0;i < numBV;i++)
 	{
-		printf("BufferView %d\n", i);
+//		printf("BufferView %d\n", i);
 
 		const struct json_object	*pArr	=json_object_array_get_idx(pBV, i);
 
 		json_object_object_foreach(pArr, pKey, pVal)
 		{
 			enum json_type	t	=json_object_get_type(pVal);
-			printf("KeyValue: %s : %s,%s\n", pKey, json_type_to_name(t),
-				json_object_get_string(pVal));
+//			printf("KeyValue: %s : %s,%s\n", pKey, json_type_to_name(t),
+//				json_object_get_string(pVal));
 			
 			if(0 == strncmp("buffer", pKey, 6))
 			{
@@ -327,7 +329,7 @@ Static	*GLCV_ExtractStatic(GraphicsDevice *pGD,
 
 	mat4	xForms[numMeshes];
 
-	MeshStuff_GetPartTransforms(pNodes, xForms, true, numMeshes);
+	MeshStuff_GetStaticPartTransforms(pNodes, xForms, numMeshes);
 
 	Static	*pStat	=Static_Create(pMeshArr, xForms, numMeshes);
 
@@ -397,6 +399,9 @@ void	GLCV_ExtractAndAddAnimation(const GLTFFile *pGF, AnimLib **ppALib)
 	if(*ppALib == NULL)
 	{
 		*ppALib		=AnimLib_Create(pSkel);
+	}
+	else
+	{
 		bNeedRemap	=true;
 	}
 
