@@ -2123,6 +2123,11 @@ static void sOnHotKeyDelete(AppContext *pAC, Event *pEvt)
 	{
 		AnimLib_Delete(pAC->mpALib, szItem);
 		SZList_Remove(&pAC->mpAnimList, szItem);
+		if(pAC->mpAnimList == NULL)
+		{
+			//none left, nuke animlib
+			AnimLib_Destroy(&pAC->mpALib);
+		}
 	}
 	else if(pLB == pAC->mpMaterialLB)
 	{

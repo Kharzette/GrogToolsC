@@ -154,7 +154,7 @@ Skeleton	*AnimStuff_GrabSkeleton(const struct json_object *pNodes,
 		}
 	}
 
-	GSNode	*pGNs	=malloc(sizeof(GSNode) * numNodes);
+	GSNode	**ppGNs	=malloc(sizeof(GSNode *) * numNodes);
 
 	for(int i=0;i < numNodes;i++)
 	{
@@ -221,28 +221,30 @@ Skeleton	*AnimStuff_GrabSkeleton(const struct json_object *pNodes,
 			}
 		}
 
-		pGNs[i].szName			=pName;
-		pGNs[i].mNumChildren	=numKids;
-		pGNs[i].mIndex			=i;
+		ppGNs[i]	=malloc(sizeof(GSNode));
+
+		ppGNs[i]->szName		=pName;
+		ppGNs[i]->mNumChildren	=numKids;
+		ppGNs[i]->mIndex		=i;
 
 		if(numKids > 0)
 		{
-			pGNs[i].mpChildren	=malloc(sizeof(GSNode *) * numKids);
+			ppGNs[i]->mpChildren	=malloc(sizeof(GSNode *) * numKids);
 		}
 		else
 		{
-			pGNs[i].mpChildren	=NULL;
+			ppGNs[i]->mpChildren	=NULL;
 		}
 
-		glm_vec3_copy(trans, pGNs[i].mKeyValue.mPosition);
-		glm_vec3_copy(scale, pGNs[i].mKeyValue.mScale);
-		glm_vec4_copy(rot, pGNs[i].mKeyValue.mRotation);
+		glm_vec3_copy(trans, ppGNs[i]->mKeyValue.mPosition);
+		glm_vec3_copy(scale, ppGNs[i]->mKeyValue.mScale);
+		glm_vec4_copy(rot, ppGNs[i]->mKeyValue.mRotation);
 	}
 
 	//fix up the children
 	for(int i=0;i < numNodes;i++)
 	{
-		if(pGNs[i].mNumChildren <= 0)
+		if(ppGNs[i]->mNumChildren <= 0)
 		{
 			continue;
 		}
@@ -257,12 +259,12 @@ Skeleton	*AnimStuff_GrabSkeleton(const struct json_object *pNodes,
 			{
 				assert(t == json_type_array);
 
-				for(int j=0;j < pGNs[i].mNumChildren;j++)
+				for(int j=0;j < ppGNs[i]->mNumChildren;j++)
 				{
 					const struct json_object	*pIdx	=
 						json_object_array_get_idx(pVal, j);
 
-					pGNs[i].mpChildren[j]	=&pGNs[json_object_get_int(pIdx)];
+					ppGNs[i]->mpChildren[j]	=ppGNs[json_object_get_int(pIdx)];
 				}
 			}
 		}
@@ -284,9 +286,10 @@ Skeleton	*AnimStuff_GrabSkeleton(const struct json_object *pNodes,
 //	GSNode_ConvertToLeftHanded(&pGNs[pJoints[0]]);
 
 	//seems like joint 0 is the root
-	Skeleton	*pRet	=Skeleton_Create(&pGNs[pJoints[0]]);
+	Skeleton	*pRet	=Skeleton_Create(ppGNs[pJoints[0]]);
 
 	free(pJoints);
+	free(ppGNs);
 
 	return	pRet;
 }

@@ -245,18 +245,6 @@ Character	*GLCV_ExtractChar(GraphicsDevice *pGD,
 
 	Skin		*pSkin	=MeshStuff_GrabSkins(pSkins,
 							pGF->mpBinChunk, pAcs, pBVs);
-	Skeleton	*pSkel	=AnimStuff_GrabSkeleton(pNodes,
-							pSkins, pGF->mpBinChunk, pAcs, pBVs);
-
-	const SkellyMap	*pSMap	=NULL;
-	if(pALib == NULL)
-	{
-		printf("Warning! No animlib so character bone indexes might mismatch later!\n");
-	}
-	else
-	{
-		pSMap	=AnimLib_GetMapping(pALib, pSkel);
-	}
 
 	const struct json_object	*pMeshes	=json_object_object_get(pGF->mpJSON, "meshes");
 	if(pMeshes == NULL)
@@ -272,7 +260,7 @@ Character	*GLCV_ExtractChar(GraphicsDevice *pGD,
 	for(int i=0;i < numMeshes;i++)
 	{
 		pMeshArr[i]	=MeshStuff_MakeMeshIndex(pGD, pSK, pMeshes,
-						pGF->mpBinChunk, pAcs, pBVs, pSMap, false, i);
+						pGF->mpBinChunk, pAcs, pBVs, false, i);
 	}
 
 	Character	*pChar	=Character_Create(pSkin, pMeshArr, numMeshes);
@@ -324,7 +312,7 @@ Static	*GLCV_ExtractStatic(GraphicsDevice *pGD,
 	for(int i=0;i < numMeshes;i++)
 	{
 		pMeshArr[i]	=MeshStuff_MakeMeshIndex(pGD, pSK, pMeshes,
-						pGF->mpBinChunk, pAcs, pBVs, NULL, true, i);
+						pGF->mpBinChunk, pAcs, pBVs, true, i);
 	}
 
 	mat4	xForms[numMeshes];
@@ -395,6 +383,11 @@ void	GLCV_ExtractAndAddAnimation(const GLTFFile *pGF, AnimLib **ppALib)
 		return;
 	}
 
+	//TODO: need to test these scenarios:
+	//animlib with a skeleton with more bones than the newly loaded anim
+	//animlib with a skeleton with less bones than the newly loaded anim
+	//detect names / indexes differing.  I think this doesn't happen much
+
 	bool	bNeedRemap	=false;
 	if(*ppALib == NULL)
 	{
@@ -402,7 +395,7 @@ void	GLCV_ExtractAndAddAnimation(const GLTFFile *pGF, AnimLib **ppALib)
 	}
 	else
 	{
-		bNeedRemap	=true;
+		bNeedRemap	=!AnimLib_CheckSkeleton(*ppALib, pSkel);
 	}
 
 	int	numAnims	=json_object_array_length(pAnims);

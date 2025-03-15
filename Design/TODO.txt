@@ -27,8 +27,12 @@ x		Random ray direction key
 x		Draw ray kinda like light ray but skinnier
 		Draw impacted shapes in red or something?
 	Basic collision shape editing / display
+		integrate with jolt
 	Don't copy alpha channel for SRV (clearer image)
 	Fix memleaks!
+	ditch collada for gltf
+	document best gltf exporter settings
+	Handle glb format too
 
 
 tool

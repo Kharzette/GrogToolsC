@@ -26,7 +26,6 @@ static mat4	*sGetIBP(const uint8_t *pBin, const Accessor *pAcc, const BufferView
 static void	*sMakeMeshData(GraphicsDevice *pGD,
 	const VertFormat *pVF, const BufferView *pBVs,
 	const Accessor *pAccs, const uint8_t *pBin,
-	const SkellyMap *pSkelMap,
 	bool bFlipZ, int *pNumVerts, int *pVertSize);
 
 
@@ -122,8 +121,8 @@ Skin	*MeshStuff_GrabSkins(const struct json_object *pSkins,
 	
 	assert(numSkins == 1);
 
-	int		*pJoints	=NULL;
-	int		numJoints	=0;	
+	uint8_t	*pJoints	=NULL;
+	int		numJoints	=0;
 	Skin	*pRet		=NULL;
 	
 	for(int i=0;i < numSkins;i++)
@@ -156,14 +155,18 @@ Skin	*MeshStuff_GrabSkins(const struct json_object *pSkins,
 
 				numJoints	=json_object_array_length(pVal);			
 			
-				pJoints	=malloc(sizeof(int) * numJoints);
+				pJoints	=malloc(sizeof(uint8_t) * numJoints);
 				
 				for(int j=0;j < numJoints;j++)
 				{
 					const struct json_object	*pJIdx	=
 						json_object_array_get_idx(pVal, j);
+
+					int	jidx	=json_object_get_int(pJIdx);
+
+					assert(jidx <= UINT8_MAX);
 						
-					pJoints[j]	=json_object_get_int(pJIdx);
+					pJoints[j]	=jidx;
 				}
 			}
 			else if(0 == strncmp("name", pKey, 4))
@@ -187,8 +190,7 @@ Mesh	*MeshStuff_MakeMeshIndex(GraphicsDevice *pGD,
 	const StuffKeeper *pSK,
 	const struct json_object *pMeshes,
 	const uint8_t *pBin, const Accessor *pAccs,
-	const BufferView *pBVs, const SkellyMap *pSMap,
-	bool bFlipZ, int index)
+	const BufferView *pBVs, bool bFlipZ, int index)
 {
 	int	numMeshes	=json_object_array_length(pMeshes);
 
@@ -256,7 +258,7 @@ Mesh	*MeshStuff_MakeMeshIndex(GraphicsDevice *pGD,
 	//create mesh
 	int	numVerts, vSize;
 	void	*pVData	=sMakeMeshData(pGD, pVF, pBVs,
-		pAccs, pBin, pSMap, bFlipZ, &numVerts, &vSize);
+		pAccs, pBin, bFlipZ, &numVerts, &vSize);
 
 	//index data
 	const Accessor		*pIndAcc	=&pAccs[indAccessIndex];
@@ -307,7 +309,6 @@ static mat4	*sGetIBP(const uint8_t *pBin, const Accessor *pAcc,
 static void	*sMakeMeshData(GraphicsDevice *pGD,
 	const VertFormat *pVF, const BufferView *pBVs,
 	const Accessor *pAccs, const uint8_t *pBin,
-	const SkellyMap *pSkelMap,
 	bool bFlipZ, int *pNumVerts, int *pVertSize)
 {
 	//calc total size of the buffer needed
@@ -431,31 +432,6 @@ static void	*sMakeMeshData(GraphicsDevice *pGD,
 				{
 //					float	x	=*(float *)(pSquishSpace[i] + (j * gSize));
 //					*(float *)(pSquishSpace[i] + (j * gSize))	=-x;
-				}
-			}
-		}
-	}
-
-	//remap bone indexes if needed
-	if(pSkelMap != NULL)
-	{
-		for(int i=0;i < pVF->mNumElements;i++)
-		{
-			int	gSize	=grogSizes[i];
-			if(pVF->mpElements[i] == EL_BINDICES)
-			{
-				for(int j=0;j < *pNumVerts;j++)
-				{
-					uint8_t	bi0	=*(uint8_t *)(pSquishSpace[i] + (j * gSize) + 0);
-					uint8_t	bi1	=*(uint8_t *)(pSquishSpace[i] + (j * gSize) + 1);
-					uint8_t	bi2	=*(uint8_t *)(pSquishSpace[i] + (j * gSize) + 2);
-					uint8_t	bi3	=*(uint8_t *)(pSquishSpace[i] + (j * gSize) + 3);
-
-					//remap
-					*(uint8_t *)(pSquishSpace[i] + (j * gSize) + 0)	=pSkelMap->mBoneMap[bi0];
-					*(uint8_t *)(pSquishSpace[i] + (j * gSize) + 1)	=pSkelMap->mBoneMap[bi1];
-					*(uint8_t *)(pSquishSpace[i] + (j * gSize) + 2)	=pSkelMap->mBoneMap[bi2];
-					*(uint8_t *)(pSquishSpace[i] + (j * gSize) + 3)	=pSkelMap->mBoneMap[bi3];
 				}
 			}
 		}
