@@ -121,8 +121,10 @@ Skin	*MeshStuff_GrabSkins(const struct json_object *pSkins,
 	int	numSkins	=json_object_array_length(pSkins);
 	
 	assert(numSkins == 1);
-	
-	Skin	*pRet	=NULL;
+
+	int		*pJoints	=NULL;
+	int		numJoints	=0;	
+	Skin	*pRet		=NULL;
 	
 	for(int i=0;i < numSkins;i++)
 	{
@@ -150,7 +152,19 @@ Skin	*MeshStuff_GrabSkins(const struct json_object *pSkins,
 			}
 			else if(0 == strncmp("joints", pKey, 19))
 			{
-				assert(t == json_type_array);				
+				assert(t == json_type_array);
+
+				numJoints	=json_object_array_length(pVal);			
+			
+				pJoints	=malloc(sizeof(int) * numJoints);
+				
+				for(int j=0;j < numJoints;j++)
+				{
+					const struct json_object	*pJIdx	=
+						json_object_array_get_idx(pVal, j);
+						
+					pJoints[j]	=json_object_get_int(pJIdx);
+				}
 			}
 			else if(0 == strncmp("name", pKey, 4))
 			{
@@ -161,8 +175,10 @@ Skin	*MeshStuff_GrabSkins(const struct json_object *pSkins,
 				utstring_printf(pName, "%s", json_object_get_string(pVal));
 			}
 		}
-		pRet	=Skin_Create(pIBPs, pAccs[ibmAccessIndex].mCount);
+		pRet	=Skin_Create(pIBPs, pJoints, pAccs[ibmAccessIndex].mCount);
 	}
+
+	free(pJoints);
 	
 	return	pRet;
 }
