@@ -27,7 +27,7 @@ static void	*sMakeMeshData(GraphicsDevice *pGD,
 	const VertFormat *pVF, const BufferView *pBVs,
 	const Accessor *pAccs, const uint8_t *pBin,
 	const SkellyMap *pSkelMap,
-	bool bFlip, int *pNumVerts, int *pVertSize);
+	bool bFlipZ, int *pNumVerts, int *pVertSize);
 
 
 //for nodes that are just tied to static mesh parts
@@ -308,7 +308,7 @@ static void	*sMakeMeshData(GraphicsDevice *pGD,
 	const VertFormat *pVF, const BufferView *pBVs,
 	const Accessor *pAccs, const uint8_t *pBin,
 	const SkellyMap *pSkelMap,
-	bool bFlip, int *pNumVerts, int *pVertSize)
+	bool bFlipZ, int *pNumVerts, int *pVertSize)
 {
 	//calc total size of the buffer needed
 	int	vSize	=0;
@@ -399,28 +399,38 @@ static void	*sMakeMeshData(GraphicsDevice *pGD,
 	}
 
 	//flip if needed
-	if(bFlip)
+	for(int i=0;i < pVF->mNumElements;i++)
 	{
-		for(int i=0;i < pVF->mNumElements;i++)
+		int	gSize	=grogSizes[i];
+		if(pVF->mpElements[i] == EL_POSITION)
 		{
-			int	gSize	=grogSizes[i];
-			if(pVF->mpElements[i] == EL_POSITION)
+			for(int j=0;j < *pNumVerts;j++)
 			{
-				for(int j=0;j < *pNumVerts;j++)
+				if(bFlipZ)
 				{
-					//TODO: temp coordinate system testing
 					float	z	=*(float *)(pSquishSpace[i] + (j * gSize) + 8);
 					*(float *)(pSquishSpace[i] + (j * gSize) + 8)	=-z;
-//					float	x	=*(float *)(pSquishSpace[i] + (j * gSize) + 0);
-//					*(float *)(pSquishSpace[i] + (j * gSize) + 0)	=-x;
+				}
+				else
+				{
+//					float	x	=*(float *)(pSquishSpace[i] + (j * gSize));
+//					*(float *)(pSquishSpace[i] + (j * gSize))	=-x;
 				}
 			}
-			else if(pVF->mpElements[i] == EL_POSITION4)
+		}
+		else if(pVF->mpElements[i] == EL_POSITION4)
+		{
+			for(int j=0;j < *pNumVerts;j++)
 			{
-				for(int j=0;j < *pNumVerts;j++)
+				if(bFlipZ)
 				{
 					float	z	=*(float *)(pSquishSpace[i] + (j * gSize) + 8);
 					*(float *)(pSquishSpace[i] + (j * gSize) + 8)	=-z;
+				}
+				else
+				{
+//					float	x	=*(float *)(pSquishSpace[i] + (j * gSize));
+//					*(float *)(pSquishSpace[i] + (j * gSize))	=-x;
 				}
 			}
 		}

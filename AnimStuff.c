@@ -270,10 +270,10 @@ Skeleton	*AnimStuff_GrabSkeleton(const struct json_object *pNodes,
 
 	//set name with index so it shows up in the
 	//skeleton editor for easier debuggery
-	for(int i=0;i < numNodes;i++)
-	{
-		utstring_printf(pGNs[i].szName, "%d,%d", i, pJoints[i]);
-	}
+//	for(int i=0;i < numNodes;i++)
+//	{
+//		utstring_printf(pGNs[i].szName, "%d,%d", i, pJoints[i]);
+//	}
 
 	//indexes are not the same from file to file
 	//need to build a consistent name to index
