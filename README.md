@@ -6,21 +6,22 @@ My existing dotnet tools are a pain to get going on linux because of the winform
 I'll start with ColladaConvert.
 
 # ColladaConvertC
-This is working fairly well now for characters, but needs a lot of work for statics.
+I've now ditched Collada in favour of the gltf format.  Surprise!
 
-For now I've decided to leave character bone space in right handed with root nodes converting to left.  This is working so far but the bone collision shapes need some serious testing to make sure they are where they are drawing.
+For now I've decided to leave character bone space in right handed with the root node converting to left.  This is working so far but the bone collision shapes need some serious testing to make sure they are where they are drawing.
 
 # Character Process
-To get a character ready to load by GrogLibs, it is best to use a Blender no newer than 3.6 to ensure that it works with [GameRig](https://github.com/SAM-tak/BlenderGameRig)
+To get a character ready to load by GrogLibs, use a Blender that works with [GameRig](https://github.com/SAM-tak/BlenderGameRig).  I am currently using 4.3.2.
 
 Build your mesh in ordinary human sizes.  I like 1.7ish meters or 94 valve units.
 
 # Materials
 I am using 3DCoat 3 for texture painting.  I'll try to get around to doing instructions for keeping it in blender in the future.
 
-3DCoat->Import object for pixel painting:  Your base mesh DAE
+Export the character mesh as FBX.  Default settings seem fine.
+
+3DCoat->Import object for pixel painting:  Your base mesh fbx
 	UV auto mapping
-	swap Y and Z
 
 Go to the UV tab and adjust the islands the way you want.  Then go to paint and start painting away.  Use layers!
 
@@ -29,11 +30,7 @@ Export low-poly mesh
 Swap Y and Z
 Export Color
 
-Save as FBX.  This will have to go back into blender as 3DCoat's collada is a bit mangled.  When importing back into blender the scale is super small.  Fix it in the little transform tab.
-
-Rotate Z 90 degrees positive to align it the usual way if needed, then Object->Apply->Rotation.
-
-Note that as of this writing, there is a bug in Blender that starts the "set" of UV coords at 2 instead of 0.  I have a hack in place but only 1 coordinate set works right now.
+Save as FBX.  This will have to go back into blender as 3DCoat's collada is a bit mangled.  After importing do Object->Apply->All Transforms.
 
 # Rigging
 In object mode do:  add->armature->gamerig->unity mechanim->human meta rig.  Zero out the transform in the transform panel.
@@ -64,53 +61,31 @@ Unparent the mesh from the metarig and parent it to the generated rig.  This tim
 
 Make sure a material is assigned, even if you don't use it.
 
-Export the base DAE.  Select just the mesh, then in export:
+Export the base mesh.  Hide any extra stuff in the scene like cameras and lights.  Export->glTF2
 
-Main tab:
-	Selection only
-	Include Armatures
-	Global Orientation
-		Leave Default:
-			Forward	Y	Up	Z
-		Check Apply
-Geom tab:
-	No triangulate
-	Transform: Matrix
-Arm tab:
-	Deform bones only
-Anim Tab:
-	Include Animations
-	Samples (would prefer curves but they just give you blank anims)
-	Include all Actions
-	Transform Matrix
+Format->glTF Separate
+Check "Remember Export Settings"
+Include->Limit to->Visible Objects
+Materials
+	No Export (dropdown)
+Shape Keys->Uncheck (don't support those yet)
+Animation->Uncheck (this is just the character so far)
 
 # Animating
-So you HAVE to use the hotkey to generate keys.  Everything you see on the web will say I, but in industry standard mode this is S.  Remember this and save yourself hours of fruitless googling.  The various key related menus do NOTHING.
+In the past I had trouble with keys not exporting, but I now think that was down to the Collada exporter.  Everything so far in gltf just works.
 
-Watch for keys not exporting.  Sometimes there will be a problem bone (usually hips) that won't export so if you are leaning into a run it looks like your character is floating backward when exported.  There seems no way to fix this other than trash the entire anim and start over.  Hey, it's free!
+For exporting, use Export->glTF2 as above with the base mesh with:
+Data->Armature->Export Deformation Bones Only->check
+Animation->check
+Sampling Animations->check (the other stuff doesn't seem to work yet)
+Optimize
+	Optimize Size->check (this is almost as good as pure key export)
+	Force keeping channels for bones->check
+
+The deformation only check above prevents export of all the extra IK and junk from gamerig.  It might cause trouble later on if a character has attachment points, like for weapons or bags or whatever.  In that case, the extra stuff can be deleted from the scene, export, undo delete stuff.
 
 # Importing
-The complicated collada xml import stuff is still in C# land.  Luckily this works fine on linux as long as no winforms are in use.  To that end I split out small pieces of the old C# functionality into a standalone command line utility called ccnogui.  This is in the old GrogTools repo.
-
-See the docs there for details but an example of converting a character would be:
-```bash
-ccnogui -meters -character MyHero.dae
-```
-
-This will save a MyHero.Character that can be loaded by ColladaConvertC.
-
-An example of making an animation library in quake units from a few dae files:
-```bash
-ccnogui -quake -anim HeroRun.dae -animlib Actions.AnimLib
-ccnogui -quake -anim HeroJump.dae -animlib Actions.AnimLib
-ccnogui -quake -anim HeroSlide.dae -animlib Actions.AnimLib
-ccnogui -quake -anim HeroClimb.dae -animlib Actions.AnimLib
-ccnogui -quake -anim HeroSwim.dae -animlib Actions.AnimLib
-ccnogui -quake -anim HeroDie.dae -animlib Actions.AnimLib
-ccnogui -quake -anim HeroIdle.dae -animlib Actions.AnimLib
-```
-
-This will save them all to Actions.AnimLib which can be loaded by ColladaConvertC.
+Load gltf Char will load the base mesh.  Load gltf Anim loads anims.  There may be trouble in the future with bones having different index values between files, but I haven't seen it yet.  It seems like a thing that could happen just from looking at the file format.  I had code to deal with it but no way to test it so I got rid of it.
 
 # Bone Collision
-The bone editing stuff is using in-render-window gui and slides out with the P key.  After that most keys will be showin in the info panel at the bottom (and will likely change as they are goofy right now).
+The bone editing stuff is using in-render-window gui and slides out with the F2 key.  After that most keys will be showin in the info panel at the bottom (and will likely change as they are goofy right now).
