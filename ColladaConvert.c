@@ -40,6 +40,7 @@
 #define	MOUSE_TO_ANG	0.001f
 #define	POW_SLIDER_MAX	100
 #define	MAX_UI_VERTS	(8192 * 4)
+#define	ANIM_BLENDTIME	0.1f
 
 //clay colours
 #define COLOR_ORANGE		(Clay_Color) {225, 138, 50, 255}
@@ -95,9 +96,12 @@ typedef struct AppContext_t
 	float	mDeltaYaw, mDeltaPitch;
 	bool	mbRunning, mbMouseLooking;
 	int		mAnimIndex, mMatIndex;
-	float	mAnimTime;
+	float	mAnimTime, mBlendTime;
 	bool	mbLeftMouseDown;
 	bool	mbDrawAxis;
+	bool	mbBlending;			//animation blending after a switch
+
+	const char	*mpPrevAnim;	//previous anim for blending
 
 	//clay pointer stuff
 	Clay_Vector2	mScrollDelta;
@@ -716,9 +720,40 @@ static void sRender(AppContext *pApp, const real64_t prTime, const real64_t cTim
 			const StringList	*pCur	=SZList_Iterate(pApp->mpAnimList);
 			while(pCur != NULL)
 			{
+				const char	*pCurName	=SZList_IteratorVal(pCur);
 				if(index == selected)
 				{
-					AnimLib_Animate(pApp->mpALib, SZList_IteratorVal(pCur), pApp->mAnimTime);
+					if(pCurName == pApp->mpPrevAnim || pApp->mbBlending)
+					{
+						if(pApp->mbBlending)
+						{
+							pApp->mBlendTime	+=TIC_RATE;
+
+							if(pApp->mBlendTime >= ANIM_BLENDTIME)
+							{
+								pApp->mbBlending	=false;
+								pApp->mpPrevAnim	=NULL;
+							}
+						}
+					}
+					else
+					{
+						pApp->mBlendTime	=0;
+						pApp->mbBlending	=true;
+					}
+
+					if(pApp->mbBlending && pApp->mpPrevAnim != NULL
+						&& pCurName != pApp->mpPrevAnim)
+					{
+						float	percentage	=pApp->mBlendTime / ANIM_BLENDTIME;
+						AnimLib_Blend(pApp->mpALib, pApp->mpPrevAnim, pCurName,
+							pApp->mAnimTime, pApp->mAnimTime, percentage);
+					}
+					else
+					{
+						pApp->mpPrevAnim	=pCurName;
+						AnimLib_Animate(pApp->mpALib, pCurName, pApp->mAnimTime);
+					}
 				}
 				pCur	=SZList_IteratorNext(pCur);
 				index++;

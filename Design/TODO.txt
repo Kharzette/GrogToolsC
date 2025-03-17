@@ -33,6 +33,8 @@ x	Basic collision shape editing / display
 x	ditch collada for gltf
 x	document best gltf exporter settings
 	Handle glb format too
+	Figure out what to do if there's a mix of character/statics
+	Handle multiple skins?
 
 
 tool
