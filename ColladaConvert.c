@@ -111,9 +111,6 @@ typedef struct AppContext_t
 	SkellyEditor	*mpSKE;
 	RayCaster		*mpRC;
 
-	//projection matrices
-	mat4	mCamProj, mTextProj;
-
 	//nappgui stuff
 	ListBox		*mpMeshPartLB;
 	ListBox		*mpMaterialLB;
@@ -138,6 +135,11 @@ typedef struct AppContext_t
 	StringList	*mpAnimList;
 
 }  AppContext;
+
+//these need align
+//projection matrices
+__attribute((aligned(32)))	static mat4	sCamProj;
+__attribute((aligned(32)))	static mat4	sTextProj;
 
 //function pointer types
 typedef void	(*ReNameFunc)(void *, const char *, const char *);
@@ -651,11 +653,11 @@ static AppContext	*sAppCreate(void)
 	pApp->mpCam	=GameCam_Create(false, 0.1f, 2000.0f, GLM_PI_4f, aspect, 1.0f, 10.0f);
 	
 	//3D Projection
-	GameCam_GetProjection(pApp->mpCam, pApp->mCamProj);
-	CBK_SetProjection(pApp->mpCBK, pApp->mCamProj);
+	GameCam_GetProjection(pApp->mpCam, sCamProj);
+	CBK_SetProjection(pApp->mpCBK, sCamProj);
 
 	//2d projection for text
-	glm_ortho(0, RESX, RESY, 0, -1.0f, 1.0f, pApp->mTextProj);
+	glm_ortho(0, RESX, RESY, 0, -1.0f, 1.0f, sTextProj);
 
 	//set constant buffers to shaders, think I just have to do this once
 	CBK_SetCommonCBToShaders(pApp->mpCBK, pApp->mpGD);
@@ -766,7 +768,7 @@ static void sRender(AppContext *pApp, const real64_t prTime, const real64_t cTim
 							pApp->mDeltaYaw, 0.0f);
 
 	//Set proj and rast and depth for 3D
-	CBK_SetProjection(pApp->mpCBK, pApp->mCamProj);
+	CBK_SetProjection(pApp->mpCBK, sCamProj);
 	GD_RSSetState(pApp->mpGD, pApp->mp3DRast);
 	GD_OMSetDepthStencilState(pApp->mpGD, StuffKeeper_GetDepthStencilState(pApp->mpSK, "EnableDepth"));
 
@@ -826,7 +828,7 @@ static void sRender(AppContext *pApp, const real64_t prTime, const real64_t cTim
 	RC_Render(pApp->mpRC);
 
 	//set proj for 2D
-	CBK_SetProjection(pApp->mpCBK, pApp->mTextProj);
+	CBK_SetProjection(pApp->mpCBK, sTextProj);
 	CBK_UpdateFrame(pApp->mpCBK, pApp->mpGD);
 
 	Clay_UpdateScrollContainers(true, pApp->mScrollDelta, cTime);

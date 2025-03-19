@@ -1385,23 +1385,16 @@ static void	ChangeShapeEH(void *pContext, const SDL_Event *pEvt)
 		return;
 	}
 
-	const GSNode	*pNode		=NULL;
 	int		numSelected	=0;
 	for(const BoneDisplayData *pCur=pSKE->mpBDD;pCur != NULL;pCur=pCur->hh.next)
 	{
 		if(pCur->mbSelected)
 		{
 			numSelected++;
-			pNode	=pCur->mpNode;
 		}
 	}
 
 	if(numSelected <= 0)
-	{
-		return;
-	}
-
-	if(numSelected > 1)
 	{
 		return;
 	}
@@ -1412,16 +1405,23 @@ static void	ChangeShapeEH(void *pContext, const SDL_Event *pEvt)
 		return;
 	}
 
-	int	choice	=Skin_GetBoundChoice(pSkin, pNode->mIndex);
-
-	choice++;
-
-	if(choice > BONE_COL_SHAPE_INVALID)
+	for(const BoneDisplayData *pCur=pSKE->mpBDD;pCur != NULL;pCur=pCur->hh.next)
 	{
-		choice	=0;
-	}
+		if(pCur->mbSelected)
+		{
+			const GSNode	*pNode	=pCur->mpNode;
 
-	Skin_SetBoundChoice(pSkin, pNode->mIndex, choice);
+			int	choice	=Skin_GetBoundChoice(pSkin, pNode->mIndex);
+
+			choice++;
+			if(choice > BONE_COL_SHAPE_INVALID)
+			{
+				choice	=0;
+			}
+		
+			Skin_SetBoundChoice(pSkin, pNode->mIndex, choice);
+		}
+	}
 }
 
 static void	SelectAllEH(void *pContext, const SDL_Event *pEvt)

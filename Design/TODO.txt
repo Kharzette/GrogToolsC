@@ -35,6 +35,7 @@ x	document best gltf exporter settings
 	Handle glb format too
 	Figure out what to do if there's a mix of character/statics
 	Handle multiple skins?
+	Bone bound boxes inside out
 
 
 tool
