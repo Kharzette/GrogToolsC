@@ -140,7 +140,7 @@ SkellyEditor	*SKE_Create(StuffKeeper *pSK, GraphicsDevice *pGD,
 
 	//prims
 	pRet->mpCube	=PF_CreateCube(1.0f, true, pGD);
-	pRet->mpSphere	=PF_CreateSphere((vec3){0,0,0}, 1.0f, false, pGD);
+	pRet->mpSphere	=PF_CreateSphere((vec3){0,0,0}, 1.0f, true, pGD);
 	pRet->mpCapsule	=PF_CreateCapsule(1.0f, 4.0f, pGD);
 
 	//input handlers

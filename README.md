@@ -1,6 +1,8 @@
 # GrogToolsC
 Tools for making game content
 
+![alt text](https://github.com/Kharzette/MiscMedia/blob/master/ProgrammerArt.png?raw=true "Bad Ludum Dare Art")
+
 My existing dotnet tools are a pain to get going on linux because of the winforms dependencies.  This is an effort to split out the gui bits into something cross platform.
 
 I'll start with ColladaConvert.
