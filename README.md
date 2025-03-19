@@ -27,10 +27,9 @@ Go to the UV tab and adjust the islands the way you want.  Then go to paint and 
 
 When finished do File->Export model:  (this will have the new UVs)
 Export low-poly mesh
-Swap Y and Z
 Export Color
 
-Save as FBX.  This will have to go back into blender as 3DCoat's collada is a bit mangled.  After importing do Object->Apply->All Transforms.
+Save as FBX.  After importing do Object->Apply->All Transforms.
 
 # Rigging
 In object mode do:  add->armature->gamerig->unity mechanim->human meta rig.  Zero out the transform in the transform panel.
