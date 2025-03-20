@@ -95,7 +95,7 @@ RayCaster	*RC_Create(StuffKeeper *pSK, GraphicsDevice *pGD,
 	//input handlers
 	//press events
 	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_F3, RCPopOutEH, pRet);		//pop outsidebar
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_r, RandomizeRayEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_R, RandomizeRayEH, pRet);
 
 	//held
 	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_LEFT, RayLeftEH, pRet);

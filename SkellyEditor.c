@@ -145,22 +145,22 @@ SkellyEditor	*SKE_Create(StuffKeeper *pSK, GraphicsDevice *pGD,
 
 	//input handlers
 	//press events
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_c, CollapseBonesEH, pRet);	//collapse/uncollapse selected bones
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_n, MarkUnusedBonesEH, pRet);	//mark bones that aren't used in vert weights
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_C, CollapseBonesEH, pRet);	//collapse/uncollapse selected bones
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_N, MarkUnusedBonesEH, pRet);	//mark bones that aren't used in vert weights
 	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_DELETE, DeleteBonesEH, pRet);	//nuke selected bones
 	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_F2, SkelPopOutEH, pRet);		//pop outsidebar
 	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_BACKSLASH, AdjustBoneBoundEH, pRet);
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_j, SnapToJointEH, pRet);
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_m, MirrorEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_J, SnapToJointEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_M, MirrorEH, pRet);
 	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_COMMA, ChangeShapeEH, pRet);
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_f, SelectAllEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_EVENT, SDLK_F, SelectAllEH, pRet);
 
 	//hold events
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_y, BoxWidthEH, pRet);
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_u, LengthEH, pRet);
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_i, BoxDepthEH, pRet);
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_g, RadiusEH, pRet);
-	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_h, MoveEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_Y, BoxWidthEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_U, LengthEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_I, BoxDepthEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_G, RadiusEH, pRet);
+	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_HELD, SDLK_H, MoveEH, pRet);
 
 	//modifiers
 	INP_MakeBindingCTX(pInp, INP_BIND_TYPE_PRESS, SDLK_LSHIFT, ShiftDownEH, pRet);

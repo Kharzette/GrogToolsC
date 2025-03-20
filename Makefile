@@ -15,7 +15,7 @@ CFLAGS=-std=gnu23 -g -O0 -march=native				\
 #	-fsanitize=address								
 
 SOURCES=$(wildcard *.c)
-LIBS=-lgui -lcore -lcasino -ldraw2d -lgeom2d -losbs -losgui -lsewer -losapp -lUtilityLib -lInputLib -lMeshLib -lMaterialLib -lm -lSDL2 -lFAudio -ljson-c
+LIBS=-lgui -lcore -lcasino -ldraw2d -lgeom2d -losbs -losgui -lsewer -losapp -lUtilityLib -lInputLib -lMeshLib -lMaterialLib -lm -lSDL3 -lFAudio -ljson-c
 LDFLAGS=-Llibs -Lnappgui_src/build/Debug/bin -LGrogLibsC/libs
 
 all: ColladaConvert

@@ -602,7 +602,7 @@ static AppContext	*sAppCreate(void)
 
 	GD_Init(&pApp->mpGD, "Collada Tool",
 		SDLWinPos[0], SDLWinPos[1], RESX, RESY, false,
-		D3D_FEATURE_LEVEL_11_0);
+		D3D_FEATURE_LEVEL_11_1);
 
 	//turn on border
 	GD_SetWindowBordered(pApp->mpGD, true);
@@ -899,28 +899,28 @@ osmain_sync(TIC_RATE, sAppCreate, sAppDestroy, sAppUpdate, "", AppContext)
 static void	sSetupKeyBinds(Input *pInp)
 {
 	//event style bindings
-	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_l, RandLightEH);		//randomize light dir
+	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_L, RandLightEH);		//randomize light dir
 	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_ESCAPE, EscEH);
-	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_x, AxisEH);
+	INP_MakeBinding(pInp, INP_BIND_TYPE_EVENT, SDLK_X, AxisEH);
 
 	//held bindings
 	//movement
-	INP_MakeBinding(pInp, INP_BIND_TYPE_HELD, SDLK_w, KeyMoveForwardEH);
-	INP_MakeBinding(pInp, INP_BIND_TYPE_HELD, SDLK_a, KeyMoveLeftEH);
-	INP_MakeBinding(pInp, INP_BIND_TYPE_HELD, SDLK_s, KeyMoveBackEH);
-	INP_MakeBinding(pInp, INP_BIND_TYPE_HELD, SDLK_d, KeyMoveRightEH);
+	INP_MakeBinding(pInp, INP_BIND_TYPE_HELD, SDLK_W, KeyMoveForwardEH);
+	INP_MakeBinding(pInp, INP_BIND_TYPE_HELD, SDLK_A, KeyMoveLeftEH);
+	INP_MakeBinding(pInp, INP_BIND_TYPE_HELD, SDLK_S, KeyMoveBackEH);
+	INP_MakeBinding(pInp, INP_BIND_TYPE_HELD, SDLK_D, KeyMoveRightEH);
 	INP_MakeBinding(pInp, INP_BIND_TYPE_HELD, SDLK_SPACE, KeyMoveUpEH);
-	INP_MakeBinding(pInp, INP_BIND_TYPE_HELD, SDLK_z, KeyMoveDownEH);
+	INP_MakeBinding(pInp, INP_BIND_TYPE_HELD, SDLK_Z, KeyMoveDownEH);
 
 	//key turning
-	INP_MakeBinding(pInp, INP_BIND_TYPE_HELD, SDLK_q, KeyTurnLeftEH);
-	INP_MakeBinding(pInp, INP_BIND_TYPE_HELD, SDLK_e, KeyTurnRightEH);
-	INP_MakeBinding(pInp, INP_BIND_TYPE_HELD, SDLK_r, KeyTurnUpEH);
-	INP_MakeBinding(pInp, INP_BIND_TYPE_HELD, SDLK_t, KeyTurnDownEH);
+	INP_MakeBinding(pInp, INP_BIND_TYPE_HELD, SDLK_Q, KeyTurnLeftEH);
+	INP_MakeBinding(pInp, INP_BIND_TYPE_HELD, SDLK_E, KeyTurnRightEH);
+	INP_MakeBinding(pInp, INP_BIND_TYPE_HELD, SDLK_R, KeyTurnUpEH);
+	INP_MakeBinding(pInp, INP_BIND_TYPE_HELD, SDLK_T, KeyTurnDownEH);
 
 	//move data events
-	INP_MakeBinding(pInp, INP_BIND_TYPE_MOVE, SDL_MOUSEMOTION, MouseMoveEH);
-	INP_MakeBinding(pInp, INP_BIND_TYPE_MOVE, SDL_MOUSEWHEEL, MouseWheelEH);
+	INP_MakeBinding(pInp, INP_BIND_TYPE_MOVE, SDL_EVENT_MOUSE_MOTION, MouseMoveEH);
+	INP_MakeBinding(pInp, INP_BIND_TYPE_MOVE, SDL_EVENT_MOUSE_WHEEL, MouseWheelEH);
 
 	//down/up events
 	INP_MakeBinding(pInp, INP_BIND_TYPE_PRESS, SDL_BUTTON_RIGHT, RightMouseDownEH);
@@ -1006,7 +1006,7 @@ static void	RightMouseDownEH(void *pContext, const SDL_Event *pEvt)
 
 	assert(pTS);
 
-	SDL_SetRelativeMouseMode(SDL_TRUE);
+	GD_SetMouseRelative(pTS->mpGD, true);
 
 	pTS->mbMouseLooking	=true;
 }
@@ -1017,7 +1017,7 @@ static void	RightMouseUpEH(void *pContext, const SDL_Event *pEvt)
 
 	assert(pTS);
 
-	SDL_SetRelativeMouseMode(SDL_FALSE);
+	GD_SetMouseRelative(pTS->mpGD, false);
 
 	pTS->mbMouseLooking	=false;
 }
