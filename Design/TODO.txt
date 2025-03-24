@@ -37,6 +37,8 @@ x	document best gltf exporter settings
 	Handle multiple skins?
 x	Bone bound boxes inside out
 	New bug where sometimes no render if mouselooking
+	Return to T pose?
+x	Loading a new anim after an AnimLib file fails
 
 
 tool

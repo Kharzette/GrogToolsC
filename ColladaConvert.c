@@ -115,10 +115,12 @@ typedef struct AppContext_t
 	ListBox		*mpMeshPartLB;
 	ListBox		*mpMaterialLB;
 	ListBox		*mpAnimLB;
-	color_t		mChosen;		//returned from color dialog
-	PopUp		*mpTexList;		//pops up to pick a texture
-	Button		*mpMatStuff;	//new mat or rename mat
-	Edit		*mpTextInput;	//for renaming things
+	color_t		mChosen;			//returned from color dialog
+	PopUp		*mpTexList;			//pops up to pick a texture
+	Button		*mpMatStuff;		//new mat or rename mat
+	Edit		*mpTextInput;		//for renaming things
+	Button		*mpAnimLooping;		//loop?
+	Button		*mpAnimPingPong;	//bounce back and forth
 
 	//material form controls
 	Button		*mpTL0, *mpTL1, *mpTL2;
@@ -152,6 +154,7 @@ static const Image		*sMakeSmallVColourBox(vec3 colour);
 static const Image		*sMakeSmallColourBox(color_t colour);
 static int				sGetSelectedMeshPartIndex(AppContext *pApp);
 static const char		*sGetSelectedMaterialName(AppContext *pApp);
+static const char		*sGetSelectedAnim(AppContext *pApp);
 static const Material	*sGetSelectedConstMaterial(AppContext *pApp);
 static Material			*sGetSelectedMaterial(AppContext *pApp);
 static void				sUpdateSelectedMaterial(AppContext *pApp);
@@ -205,7 +208,10 @@ static void sShaderChanged(AppContext *pAC, Event *pEvt);
 static void sSPowChanged(AppContext *pAC, Event *pEvt);
 static void	sColourButtonClicked(AppContext *pAC, Event *pEvt);
 static void sMatSelectionChanged(AppContext *pAC, Event *pEvt);
+static void sAnimSelectionChanged(AppContext *pAC, Event *pEvt);
 static void sMeshSelectionChanged(AppContext *pAC, Event *pEvt);
+static void sLoopingClicked(AppContext *pAC, Event *pEvt);
+static void sPingPongClicked(AppContext *pAC, Event *pEvt);
 static void	sSRV0Clicked(AppContext *pAC, Event *pEvt);
 static void	sSRV1Clicked(AppContext *pAC, Event *pEvt);
 static void	sTexChosen(AppContext *pAC, Event *pEvt);
@@ -434,6 +440,8 @@ static void	sCreateMatWindow(AppContext *pApp)
 	imageview_OnClick(pApp->mpSRV0, listener(pApp, sSRV0Clicked, AppContext));
 	imageview_OnClick(pApp->mpSRV1, listener(pApp, sSRV1Clicked, AppContext));
 	popup_OnSelect(pApp->mpTexList, listener(pApp, sTexChosen, AppContext));
+	button_OnClick(pApp->mpAnimLooping, listener(pApp, sLoopingClicked, AppContext));
+	button_OnClick(pApp->mpAnimPingPong, listener(pApp, sPingPongClicked, AppContext));
 
 	Panel	*pPanel	=panel_create();
 
@@ -479,6 +487,7 @@ static AppContext	*sAppCreate(void)
 	Layout	*pSavLoadMeshLay	=layout_create(2, 3);
 	Layout	*pSavLoadMatLay		=layout_create(1, 2);
 	Layout	*pSavLoadAnimLay	=layout_create(1, 3);
+	Layout	*pAnButns			=layout_create(1, 2);
 
 	Button	*pLGLTFC	=button_push();
 	Button	*pLChar		=button_push();
@@ -491,8 +500,12 @@ static AppContext	*sAppCreate(void)
 	Button	*pLGLTFS	=button_push();
 	Button	*pLStat		=button_push();
 	Button	*pSStat		=button_push();
-	Button	*pAssMat	=button_push();
+	Button	*pAssMat	=button_push();	
 	pApp->mpMatStuff	=button_push();
+
+	//checkboxen
+	pApp->mpAnimLooping		=button_check();
+	pApp->mpAnimPingPong	=button_check();
 
 	button_text(pLGLTFC, "Load gltf/glb Char");
 	button_text(pLChar, "Load Character");
@@ -508,6 +521,9 @@ static AppContext	*sAppCreate(void)
 	button_text(pAssMat, "<- Assign Material <-");
 	button_text(pApp->mpMatStuff, "New Material");
 
+	button_text(pApp->mpAnimLooping, "Anim Looping");
+	button_text(pApp->mpAnimPingPong, "Anim PingPong");
+
 	pApp->mpMeshPartLB	=listbox_create();
 	pApp->mpMaterialLB	=listbox_create();
 	pApp->mpAnimLB		=listbox_create();
@@ -518,6 +534,7 @@ static AppContext	*sAppCreate(void)
 	layout_layout(pLay, pSavLoadMeshLay, 0, 0);
 	layout_layout(pLay, pSavLoadMatLay, 1, 0);
 	layout_layout(pLay, pSavLoadAnimLay, 2, 0);
+	layout_layout(pLay, pAnButns, 1, 2);
 
 	//put the buttons within sublayouts
 	layout_button(pSavLoadMeshLay, pLGLTFC, 0, 0);
@@ -533,6 +550,9 @@ static AppContext	*sAppCreate(void)
 	layout_button(pSavLoadAnimLay, pLGLTFA, 0, 0);
 	layout_button(pSavLoadAnimLay, pLAnim, 0, 1);
 	layout_button(pSavLoadAnimLay, pSAnim, 0, 2);
+
+	layout_button(pAnButns, pApp->mpAnimLooping, 0, 0);
+	layout_button(pAnButns, pApp->mpAnimPingPong, 0, 1);
 
 	//center these buttons
 	layout_halign(pSavLoadMeshLay, 0, 0, ekCENTER);
@@ -566,6 +586,7 @@ static AppContext	*sAppCreate(void)
 	button_OnClick(pAssMat, listener(pApp, sAssignMaterial, AppContext));
 	listbox_OnSelect(pApp->mpMaterialLB, listener(pApp, sMatSelectionChanged, AppContext));
 	listbox_OnSelect(pApp->mpMeshPartLB, listener(pApp, sMeshSelectionChanged, AppContext));
+	listbox_OnSelect(pApp->mpAnimLB, listener(pApp, sAnimSelectionChanged, AppContext));
 	button_OnClick(pApp->mpMatStuff, listener(pApp, sDoMatStuff, AppContext));
 
 	Panel	*pPanel	=panel_create();
@@ -1914,6 +1935,36 @@ static void sSRVClicked(AppContext *pApp, int idx)
 	}
 }
 
+static void sLoopingClicked(AppContext *pAC, Event *pEvt)
+{
+	unref(pEvt);
+
+	const char	*szAnimSel	=sGetSelectedAnim(pAC);
+	if(szAnimSel == NULL)
+	{
+		return;
+	}
+
+	bool	bLooping	=(button_get_state(pAC->mpAnimLooping) == ekGUI_ON);
+
+	AnimLib_SetLooping(pAC->mpALib, szAnimSel, bLooping);
+}
+
+static void sPingPongClicked(AppContext *pAC, Event *pEvt)
+{
+	unref(pEvt);
+
+	const char	*szAnimSel	=sGetSelectedAnim(pAC);
+	if(szAnimSel == NULL)
+	{
+		return;
+	}
+
+	bool	bPingPong	=(button_get_state(pAC->mpAnimPingPong) == ekGUI_ON);
+
+	AnimLib_SetPingPong(pAC->mpALib, szAnimSel, bPingPong);
+}
+
 static void sSRV0Clicked(AppContext *pAC, Event *pEvt)
 {
 	unref(pEvt);
@@ -2236,6 +2287,23 @@ static void sMatSelectionChanged(AppContext *pAC, Event *pEvt)
 	button_text(pAC->mpMatStuff, "Rename Material");
 }
 
+static void sAnimSelectionChanged(AppContext *pAC, Event *pEvt)
+{
+	unref(pEvt);
+
+	const char	*szAnimSel	=sGetSelectedAnim(pAC);
+	if(szAnimSel == NULL)
+	{
+		return;
+	}
+
+	bool	bLooping	=AnimLib_GetLooping(pAC->mpALib, szAnimSel);
+	bool	bPingPong	=AnimLib_GetPingPong(pAC->mpALib, szAnimSel);
+
+	button_state(pAC->mpAnimLooping, bLooping? ekGUI_ON : ekGUI_OFF);
+	button_state(pAC->mpAnimPingPong, bPingPong? ekGUI_ON : ekGUI_OFF);
+}
+
 static void sMeshSelectionChanged(AppContext *pAC, Event *pEvt)
 {
 	unref(pEvt);
@@ -2369,6 +2437,17 @@ static const char	*sGetSelectedMaterialName(AppContext *pApp)
 	}
 
 	return	listbox_text(pApp->mpMaterialLB, matSelected);
+}
+
+static const char	*sGetSelectedAnim(AppContext *pApp)
+{
+	int	animSelected	=sGetSelectedIndex(pApp->mpAnimLB);
+	if(animSelected == -1)
+	{
+		return	NULL;
+	}
+
+	return	listbox_text(pApp->mpAnimLB, animSelected);
 }
 
 static Material	*sGetSelectedMaterial(AppContext *pApp)
