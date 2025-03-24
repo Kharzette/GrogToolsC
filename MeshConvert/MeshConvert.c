@@ -243,7 +243,7 @@ static Window	*sCreateWindow(void)
 {
 	Window	*pWnd	=window_create(ekWINDOW_STD | ekWINDOW_ESC | ekWINDOW_RETURN | ekWINDOW_RESIZE);
 	
-	window_title(pWnd, "Collada Conversion Tool");
+	window_title(pWnd, "Mesh Conversion Tool");
 
 	printf("sCreateWindow\n");
 	
@@ -621,7 +621,7 @@ static AppContext	*sAppCreate(void)
 	vec2	SDLWinPos;
 	UserSettings_GetPosition(pApp->mpUS, "3DWindow", SDLWinPos);
 
-	GD_Init(&pApp->mpGD, "Collada Tool",
+	GD_Init(&pApp->mpGD, "Mesh Tool",
 		SDLWinPos[0], SDLWinPos[1], RESX, RESY, false,
 		D3D_FEATURE_LEVEL_11_1);
 

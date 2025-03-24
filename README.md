@@ -3,11 +3,7 @@ Tools for making game content
 
 ![alt text](https://github.com/Kharzette/MiscMedia/blob/master/ProgrammerArt.png?raw=true "Bad Ludum Dare Art")
 
-My existing dotnet tools are a pain to get going on linux because of the winforms dependencies.  This is an effort to split out the gui bits into something cross platform.
-
-I'll start with ColladaConvert.
-
-# ColladaConvertC
+# MeshConvert
 I've now ditched Collada in favour of the gltf format.  Surprise!
 
 For now I've decided to leave character bone space in right handed with the root node converting to left.  This is working so far but the bone collision shapes need some serious testing to make sure they are where they are drawing.

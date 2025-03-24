@@ -5,10 +5,10 @@
 	"tasks": [
 		{
 			"type": "shell",
-			"label": "CC make",
+			"label": "MC make",
 			"command": "make",
 			"group": "build",
-			"options": {"cwd": "${workspaceFolder}"},
+			"options": {"cwd": "${workspaceFolder}/MeshConvert"},
 			"problemMatcher": [],
 			"detail": "make build task",
 			"dependsOn": [ "copyGLibs", "copyDXGI", "copyD3D11", "copyNappgui" ]

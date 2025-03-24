@@ -7,9 +7,9 @@
 		{
 			"type": "cppdbg",
 			"request": "launch",
-			"preLaunchTask": "CC make",
-			"name": "CC Debug",
-			"program": "${workspaceFolder}/ColladaConvert",
+			"preLaunchTask": "MC make",
+			"name": "MC Debug",
+			"program": "${workspaceFolder}/MeshConvert/MeshConvert",
 			"args": [],
 			"stopAtEntry": false,
 			"externalConsole": true,
