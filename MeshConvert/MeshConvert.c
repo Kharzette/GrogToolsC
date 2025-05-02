@@ -651,6 +651,16 @@ static AppContext	*sAppCreate(void)
 
 	//default cel shading
 	sSetDefaultCel(pApp);
+
+	//set a default colour table
+	{
+		vec4	goofyColours[]	={
+			{1,.8,.2,1}, {0,1,0,1}, {0,0,1,1}, {1,0,0,1},
+			{1,0,0,1}, {1,0,0,1}, {1,0,0,1}, {1,0,0,1}
+		};
+
+		CBK_SetCustomColours(pApp->mpCBK, goofyColours);
+	}
 	
 	//set sky gradient
 	{
@@ -811,6 +821,7 @@ static void sRender(AppContext *pApp, const real64_t prTime, const real64_t cTim
 
 	//update frame CB
 	CBK_UpdateFrame(pApp->mpCBK, pApp->mpGD);
+	CBK_UpdateCustomColours(pApp->mpCBK, pApp->mpGD);
 
 	//draw xyz axis
 	if(pApp->mbDrawAxis)
@@ -1750,20 +1761,6 @@ static void sTexChosen(AppContext *pAC, Event *pEvt)
 		return;
 	}
 
-	const EvButton	*pB	=event_params(pEvt, EvButton);
-
-	//tag determines which SRV was clicked
-	uint32_t	tag	=guicontrol_get_tag((GuiControl *)pAC->mpTexList);
-
-	if(tag == 0)
-	{
-		MAT_SetSRV0(pMat, pB->text, pAC->mpSK);
-	}
-	else
-	{
-		MAT_SetSRV1(pMat, pB->text, pAC->mpSK);
-	}
-
 	window_stop_modal(pAC->mpTexWnd, 69);
 }
 
@@ -1923,6 +1920,12 @@ static void UpdateSRVImages(AppContext *pApp)
 
 static void sSRVClicked(AppContext *pApp, int idx)
 {
+	Material	*pMat	=sGetSelectedMaterial(pApp);
+	if(pMat == NULL)
+	{
+		return;
+	}
+
 	//tag with SRV index
 	guicontrol_tag((GuiControl *)pApp->mpTexList, idx);
 
@@ -1931,6 +1934,22 @@ static void sSRVClicked(AppContext *pApp, int idx)
 	uint32_t	ret	=window_modal(pApp->mpTexWnd, pApp->mpMatWnd);
 	if(ret != ekGUI_CLOSE_ESC)
 	{
+		//figure out which was chosem
+		uint32_t	sel	=popup_get_selected(pApp->mpTexList);
+
+		//tag determines which SRV was clicked
+		uint32_t	tag	=guicontrol_get_tag((GuiControl *)pApp->mpTexList);
+
+		const char	*pTex	=popup_get_text(pApp->mpTexList, sel);
+	
+		if(tag == 0)
+		{
+			MAT_SetSRV0(pMat, pTex, pApp->mpSK);
+		}
+		else
+		{
+			MAT_SetSRV1(pMat, pTex, pApp->mpSK);
+		}
 		UpdateSRVImages(pApp);
 	}
 }

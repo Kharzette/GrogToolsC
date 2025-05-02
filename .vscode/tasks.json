@@ -117,9 +117,9 @@
             "type": "shell",
             "label": "Compile Shaders",
             "command": "${workspaceFolder}/GrogLibsC/GrogHLSLCompileTool/bin/Debug/net6.0/GrogHLSLCompileTool",
-            "args": ["${workspaceFolder}/GrogLibsC/ShaderLib", "SM4", "SM41", "SM5"],    //add more if you want SM2 SM4 etc
+            "args": ["${workspaceFolder}/GrogLibsC/ShaderLib", "SM5"],    //add more if you want SM2 SM4 etc
             "group": "build",
-            "options": {"cwd": "/mnt/SkyFather/Games/CurrentGame"},
+            "options": {"cwd": "${config:CurrentGame}"},
             "problemMatcher": [
                 {
                     "owner": "fxc",
