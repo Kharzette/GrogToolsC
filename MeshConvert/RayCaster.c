@@ -6,7 +6,7 @@
 #include	"UtilityLib/PrimFactory.h"
 #include	"MaterialLib/StuffKeeper.h"
 #include	"MaterialLib/CBKeeper.h"
-#include	"MaterialLib/UIStuff.h"
+#include	"UILib/UIStuff.h"
 #include	"MeshLib/AnimLib.h"
 #include	"MeshLib/Mesh.h"
 #include	"MeshLib/Static.h"

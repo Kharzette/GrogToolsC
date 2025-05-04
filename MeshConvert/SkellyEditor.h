@@ -9,7 +9,7 @@ typedef struct	AnimLib_t		AnimLib;
 typedef struct	Character_t		Character;
 
 SkellyEditor	*SKE_Create(StuffKeeper *pSK, GraphicsDevice *pGD,
-			CBKeeper *pCBK, Input *pInp);
+			CBKeeper *pCBK, Input *pInp, UIStuff *pUI);
 void	SKE_Destroy(SkellyEditor **ppSKE);
 void	SKE_Update(SkellyEditor *pSKE, float deltaTime);
 

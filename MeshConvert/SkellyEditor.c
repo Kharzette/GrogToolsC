@@ -5,7 +5,7 @@
 #include	"UtilityLib/PrimFactory.h"
 #include	"MaterialLib/StuffKeeper.h"
 #include	"MaterialLib/CBKeeper.h"
-#include	"MaterialLib/UIStuff.h"
+#include	"UILib/UIStuff.h"
 #include	"MeshLib/AnimLib.h"
 #include	"MeshLib/Mesh.h"
 #include	"MeshLib/Character.h"
@@ -82,6 +82,8 @@ typedef struct	SkellyEditor_t
 	bool			mbSEAnimating;		//stuff collapsing / growing
 	bool			mbAdjustingMode;	//single bone shape adjust
 	int				mAdjustingIndex;	//index of bone being changed
+	uint16_t		mNodeFontID, mHelpFontID;
+	int				mNodeFontSize, mHelpFontSize;
 
 	//skelly popout movers
 	Mover	*mpSEM;
@@ -119,7 +121,7 @@ static void	CtrlUpEH(void *pContext, const SDL_Event *pEvt);
 
 
 SkellyEditor	*SKE_Create(StuffKeeper *pSK, GraphicsDevice *pGD,
-			CBKeeper *pCBK, Input *pInp)
+			CBKeeper *pCBK, Input *pInp, UIStuff *pUI)
 {
 	SkellyEditor	*pRet	=malloc(sizeof(SkellyEditor));
 	memset(pRet, 0, sizeof(SkellyEditor));
@@ -128,6 +130,13 @@ SkellyEditor	*SKE_Create(StuffKeeper *pSK, GraphicsDevice *pGD,
 	pRet->mpSK	=pSK;
 	pRet->mpGD	=pGD;
 	pRet->mpCBK	=pCBK;
+
+	//find a couple decent fonts
+	pRet->mNodeFontID	=UI_GetNearestFontSize(pUI, 14);
+	pRet->mHelpFontID	=UI_GetNearestFontSize(pUI, 12);
+
+	pRet->mNodeFontSize	=UI_GetFontSize(pUI, pRet->mNodeFontID);
+	pRet->mHelpFontSize	=UI_GetFontSize(pUI, pRet->mHelpFontID);
 
 	//movers
 	pRet->mpSEM				=Mover_Create();
@@ -298,12 +307,12 @@ void	SKE_MakeClayLayout(SkellyEditor *pSKE)
 			}
 			else
 			{
-				CLAY_TEXT(CLAY_STRING("No Skeleton Loaded!"), CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 70, 70, 155} }));
+				CLAY_TEXT(CLAY_STRING("No Skeleton Loaded!"), CLAY_TEXT_CONFIG({ .fontSize = pSKE->mHelpFontSize, .fontId = pSKE->mHelpFontID, .textColor = {0, 70, 70, 155} }));
 			}
 		}
 		else
 		{
-			CLAY_TEXT(CLAY_STRING("No Skeleton Loaded!"), CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 70, 70, 155} }));
+			CLAY_TEXT(CLAY_STRING("No Skeleton Loaded!"), CLAY_TEXT_CONFIG({ .fontSize = pSKE->mHelpFontSize, .fontId = pSKE->mHelpFontID, .textColor = {0, 70, 70, 155} }));
 		}
 		Clay__CloseElement();	//skelly editor
 
@@ -329,7 +338,7 @@ void	SKE_MakeClayLayout(SkellyEditor *pSKE)
 				.border = { .color = {80, 80, 80, 255}, .width = CLAY_BORDER_ALL(2) },
 				.backgroundColor =  {150, 150, 155, 55}})
 			{
-				CLAY_TEXT(csInfo, CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 70, 70, 155} }));
+				CLAY_TEXT(csInfo, CLAY_TEXT_CONFIG({ .fontSize = pSKE->mHelpFontSize, .fontId = pSKE->mHelpFontID, .textColor = {0, 70, 70, 155} }));
 			}
 		}
 		Clay__CloseElement();	//sidebar
@@ -727,7 +736,7 @@ static void sSkeletonLayout(const GSNode *pNode, SkellyEditor *pSKE, int colStat
 		{
 			if(bCollapsed)
 			{
-				CLAY_TEXT(CLAY_STRING("+"), CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 0, 0, 255} }));
+				CLAY_TEXT(CLAY_STRING("+"), CLAY_TEXT_CONFIG({ .fontSize = pSKE->mNodeFontSize, .fontId = pSKE->mNodeFontID, .textColor = {0, 0, 0, 255} }));
 				if(bAnimating)
 				{
 					//if this node is collapsing, squish child nodes
@@ -736,7 +745,7 @@ static void sSkeletonLayout(const GSNode *pNode, SkellyEditor *pSKE, int colStat
 			}
 			else
 			{
-				CLAY_TEXT(CLAY_STRING("-"), CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 0, 0, 255} }));
+				CLAY_TEXT(CLAY_STRING("-"), CLAY_TEXT_CONFIG({ .fontSize = pSKE->mNodeFontSize, .fontId = pSKE->mNodeFontID, .textColor = {0, 0, 0, 255} }));
 				if(bAnimating)
 				{
 					//if this node is animating, grow child nodes
@@ -744,7 +753,7 @@ static void sSkeletonLayout(const GSNode *pNode, SkellyEditor *pSKE, int colStat
 				}
 			}
 		}
-		CLAY_TEXT(csNode, CLAY_TEXT_CONFIG({ .fontSize = 26, .textColor = {0, 0, 0, 255} }));
+		CLAY_TEXT(csNode, CLAY_TEXT_CONFIG({ .fontSize = pSKE->mNodeFontSize, .fontId = pSKE->mNodeFontID, .textColor = {0, 0, 0, 255} }));
 	}	//this closes the inner text nubbins
 
 	//see if collapsed, if so recurse no further

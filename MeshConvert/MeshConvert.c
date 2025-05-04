@@ -5,25 +5,20 @@
 #include	"UtilityLib/MiscStuff.h"
 #include	"UtilityLib/ListStuff.h"
 #include	"UtilityLib/StringStuff.h"
-#include	"UtilityLib/DictionaryStuff.h"
 #include	"UtilityLib/UserSettings.h"
-#include	"UtilityLib/Mover.h"
 #include	"UtilityLib/PrimFactory.h"
+#define CLAY_IMPLEMENTATION
+#include	"UILib/UIStuff.h"
 #include	"MaterialLib/StuffKeeper.h"
 #include	"MaterialLib/Material.h"
 #include	"MaterialLib/MaterialLib.h"
 #include	"MaterialLib/CBKeeper.h"
 #include	"MaterialLib/PostProcess.h"
-#define CLAY_IMPLEMENTATION
-#include	"MaterialLib/UIStuff.h"
 #include	"MeshLib/AnimLib.h"
 #include	"MeshLib/Mesh.h"
 #include	"MeshLib/Character.h"
-#include	"MeshLib/Skeleton.h"
-#include	"MeshLib/GSNode.h"
 #include	"MeshLib/Static.h"
 #include	"MeshLib/CommonPrims.h"
-#include	"MeshLib/Skin.h"
 #include	"InputLib/Input.h"
 #include	"SkellyEditor.h"
 #include	"RayCaster.h"
@@ -701,7 +696,7 @@ static AppContext	*sAppCreate(void)
 
 	pApp->mpUI	=UI_Create(pApp->mpGD, pApp->mpSK, MAX_UI_VERTS);
 
-	UI_AddFont(pApp->mpUI, "MeiryoUI26", 0);
+	UI_AddAllFonts(pApp->mpUI);
 
 	//clay init
     uint64_t totalMemorySize = Clay_MinMemorySize();
@@ -711,7 +706,7 @@ static AppContext	*sAppCreate(void)
 
 	Clay_SetDebugModeEnabled(false);
 
-	pApp->mpSKE	=SKE_Create(pApp->mpSK, pApp->mpGD, pApp->mpCBK, pApp->mpInp);
+	pApp->mpSKE	=SKE_Create(pApp->mpSK, pApp->mpGD, pApp->mpCBK, pApp->mpInp, pApp->mpUI);
 	pApp->mpRC	=RC_Create(pApp->mpSK, pApp->mpGD, pApp->mpCBK, pApp->mpInp);
 
 	pApp->mbRunning		=true;

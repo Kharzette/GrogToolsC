@@ -17,6 +17,9 @@
         "call.h": "c",
         "liststuff.h": "c",
         "mesh.h": "c",
-        "gltffile.h": "c"
+        "gltffile.h": "c",
+        "particleemitter.h": "c",
+        "stuffkeeper.h": "c",
+        "primfactory.h": "c"
     }
 }
