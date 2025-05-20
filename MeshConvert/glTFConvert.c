@@ -61,11 +61,12 @@ static Accessor	*sReadAccessors(const struct json_object *pAcc)
 
 		const struct json_object	*pArr	=json_object_array_get_idx(pAcc, i);
 
+		bool	bNormalized	=false;
 		json_object_object_foreach(pArr, pKey, pVal)
 		{
 			enum json_type	t	=json_object_get_type(pVal);
-//			printf("KeyValue: %s : %s,%s\n", pKey, json_type_to_name(t),
-//				json_object_get_string(pVal));
+			printf("KeyValue: %s : %s,%s\n", pKey, json_type_to_name(t),
+				json_object_get_string(pVal));
 			
 			if(0 == strncmp("bufferView", pKey, 10))
 			{
@@ -84,6 +85,11 @@ static Accessor	*sReadAccessors(const struct json_object *pAcc)
 				assert(t == json_type_int);
 
 				pRet[i].mCount	=json_object_get_int(pVal);
+			}
+			else if(0 == strncmp("normalized", pKey, 10))
+			{
+				printf("Normalized stuffz\n");
+				bNormalized	=json_object_get_boolean(pVal);
 			}
 			else if(0 == strncmp("min", pKey, 3))
 			{
@@ -260,7 +266,7 @@ Character	*GLCV_ExtractChar(GraphicsDevice *pGD,
 	for(int i=0;i < numMeshes;i++)
 	{
 		pMeshArr[i]	=MeshStuff_MakeMeshIndex(pGD, pSK, pMeshes,
-						pGF->mpBinChunk, pAcs, pBVs, false, i);
+						pGF->mpBinChunk, pAcs, pBVs, false, false, i);
 	}
 
 	Character	*pChar	=Character_Create(pSkin, pMeshArr, numMeshes);
@@ -269,7 +275,7 @@ Character	*GLCV_ExtractChar(GraphicsDevice *pGD,
 }
 
 Static	*GLCV_ExtractStatic(GraphicsDevice *pGD,
-	const StuffKeeper *pSK, const GLTFFile *pGF)
+	const StuffKeeper *pSK, const GLTFFile *pGF, bool bVColorIdx)
 {
 	assert(pGF != NULL);
 
@@ -312,7 +318,7 @@ Static	*GLCV_ExtractStatic(GraphicsDevice *pGD,
 	for(int i=0;i < numMeshes;i++)
 	{
 		pMeshArr[i]	=MeshStuff_MakeMeshIndex(pGD, pSK, pMeshes,
-						pGF->mpBinChunk, pAcs, pBVs, true, i);
+						pGF->mpBinChunk, pAcs, pBVs, true, bVColorIdx, i);
 	}
 
 	mat4	xForms[numMeshes];

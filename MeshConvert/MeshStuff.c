@@ -19,14 +19,20 @@
 #include	"MeshStuff.h"
 
 
+typedef struct	StaticVert_t
+{
+	vec4		PositionU;
+	uint32_t	NormVCol[4];
+}	StaticVert;
+
 //static forward decs
 static void	sFillVertFormat(const struct json_object *pVAttr, VertFormat *pVF);
 static int	sSizeForAccType(const Accessor *pAcc);
 static mat4	*sGetIBP(const uint8_t *pBin, const Accessor *pAcc, const BufferView *pBVs);
-static void	*sMakeMeshData(GraphicsDevice *pGD,
+static StaticVert	*sMakeMeshData(GraphicsDevice *pGD,
 	const VertFormat *pVF, const BufferView *pBVs,
 	const Accessor *pAccs, const uint8_t *pBin,
-	bool bFlipZ, int *pNumVerts, int *pVertSize);
+	bool bFlipZ, bool bVCIdx, int *pNumVerts, int *pVertSize);
 
 
 //for nodes that are just tied to static mesh parts
@@ -190,7 +196,7 @@ Mesh	*MeshStuff_MakeMeshIndex(GraphicsDevice *pGD,
 	const StuffKeeper *pSK,
 	const struct json_object *pMeshes,
 	const uint8_t *pBin, const Accessor *pAccs,
-	const BufferView *pBVs, bool bFlipZ, int index)
+	const BufferView *pBVs, bool bFlipZ, bool bVColorIndex, int index)
 {
 	int	numMeshes	=json_object_array_length(pMeshes);
 
@@ -258,7 +264,7 @@ Mesh	*MeshStuff_MakeMeshIndex(GraphicsDevice *pGD,
 	//create mesh
 	int	numVerts, vSize;
 	void	*pVData	=sMakeMeshData(pGD, pVF, pBVs,
-		pAccs, pBin, bFlipZ, &numVerts, &vSize);
+		pAccs, pBin, bFlipZ, bVColorIndex, &numVerts, &vSize);
 
 	//index data
 	const Accessor		*pIndAcc	=&pAccs[indAccessIndex];
@@ -306,10 +312,10 @@ static mat4	*sGetIBP(const uint8_t *pBin, const Accessor *pAcc,
 }
 
 //return numVerts, vertSize, and pointer to Data
-static void	*sMakeMeshData(GraphicsDevice *pGD,
+static StaticVert	*sMakeMeshData(GraphicsDevice *pGD,
 	const VertFormat *pVF, const BufferView *pBVs,
 	const Accessor *pAccs, const uint8_t *pBin,
-	bool bFlipZ, int *pNumVerts, int *pVertSize)
+	bool bFlipZ, bool bVColorIndexes, int *pNumVerts, int *pVertSize)
 {
 	//calc total size of the buffer needed
 	int	vSize	=0;
@@ -344,125 +350,111 @@ static void	*sMakeMeshData(GraphicsDevice *pGD,
 		assert(pBVs[bv].mByteLength == (elSize * *pNumVerts));
 	}
 
-	int	grogSizes[pVF->mNumElements];
+	*pVertSize	=sizeof(StaticVert);
 
-	Layouts_GetGrogSizes(pVF->mpElements, grogSizes, pVF->mNumElements);
+	StaticVert	*pRet	=malloc(sizeof(StaticVert) * *pNumVerts);
 
-	*pVertSize	=0;
-
-	//alloc temp space for squishing elements if needed
-	void *pSquishSpace[pVF->mNumElements];
-	for(int i=0;i < pVF->mNumElements;i++)
+	for(int i=0;i < *pNumVerts;i++)
 	{
-		pSquishSpace[i]	=malloc(grogSizes[i] * *pNumVerts);
-		*pVertSize	+=grogSizes[i];
-	}
+		vec4		pos;
+		vec3		col		={	1,1,1	};
+		vec3		norm;
+		vec2		tex;
+		uint16_t	idx		=69;
 
-	for(int i=0;i < pVF->mNumElements;i++)
-	{
-		int	acc		=pVF->mpElAccess[i];
-		int	bv		=pAccs[acc].mBufferView;
-		int	glSize	=sSizeForAccType(&pAccs[acc]);
-		int	gSize	=grogSizes[i];
-		int	ofs		=pBVs[bv].mByteOffset;
-		int	elTotal	=pBVs[bv].mByteLength;
-
-		if(glSize == gSize)
+		for(int j=0;j < pVF->mNumElements;j++)
 		{
-			memcpy(pSquishSpace[i], &pBin[ofs], elTotal);
-			continue;
-		}
+			int	acc		=pVF->mpElAccess[j];
+			int	bv		=pAccs[acc].mBufferView;
+			int	glSize	=sSizeForAccType(&pAccs[acc]);
+			int	ofs		=pBVs[bv].mByteOffset + i * glSize;
+			int	elTotal	=pBVs[bv].mByteLength;
 
-		//I think in the future this code will have problems as it
-		//attempts to work on more complex static meshes and such.
-		//Hopefully the assert catches it, and can add new cases.
-		for(int j=0;j < *pNumVerts;j++)
-		{
-			switch(pAccs[acc].mType)
+			switch(pVF->mpElements[j])
 			{
-				case	TYPE_VEC2:
-					Misc_ConvertFlippedUVVec2ToF16(
-						(const float *)&pBin[ofs + (j * glSize)],
-						pSquishSpace[i] + (j * gSize));
-				break;
-				case	TYPE_VEC3:
-					Misc_ConvertVec3ToF16((const float *)&pBin[ofs + (j * glSize)],
-						pSquishSpace[i] + (j * gSize));
+				case	EL_POSITION:
+					glm_vec3_copy((const float *)&pBin[ofs], pos);
 					break;
-				case	TYPE_VEC4:
-					Misc_ConvertVec4ToF16((const float *)&pBin[ofs + (j * glSize)],
-						pSquishSpace[i] + (j * gSize));
+				case	EL_POSITION2:
+					glm_vec2_copy((const float *)&pBin[ofs], pos);
+					break;
+				case	EL_POSITION4:
+					glm_vec4_copy((const float *)&pBin[ofs], pos);
+					break;
+				case	EL_BINDICES:
+					assert(false);
+					break;
+				case	EL_BWEIGHTS:
+					assert(false);
+					break;
+				case	EL_COLOR:
+					if(pAccs[acc].mComponentType == CTYPE_BYTE)
+					{
+						vec4	col4, colLin;
+						
+						Misc_RGBAToVec4(pBin[ofs], col4);
+						Misc_SRGBToLinear(col4, colLin);
+						glm_vec3_copy(colLin, col);
+
+						if(bVColorIndexes)
+						{
+							//index in red, round
+							idx	=((col4[0] * 255.0f) + 0.5f);
+						}
+					}
+					else if(pAccs[acc].mComponentType == CTYPE_USHORT)
+					{
+						vec4	col4, colLin;
+
+						Misc_RGBA16ToVec4(*((uint64_t *)&pBin[ofs]), col4);
+						Misc_SRGBToLinear(col4, colLin);
+						glm_vec3_copy(colLin, col);
+
+						if(bVColorIndexes)
+						{
+							//index in red, round
+							idx	=((col4[0] * 255.0f) + 0.5f);
+						}
+					}
+					else
+					{
+						assert(false);	//dunno!
+					}
+					break;
+				case	EL_NORMAL:
+					glm_vec3_copy((const float *)&pBin[ofs], norm);
+					break;
+				case	EL_TANGENT:
+					assert(false);
+					break;
+				case	EL_TEXCOORD:
+					glm_vec2_copy((const float *)&pBin[ofs], tex);
+					break;
+				case	EL_TEXCOORD4:
+					assert(false);
 					break;
 				default:
-					assert(false);
+					assert(false);					
 			}
 		}
-	}
 
-	//flip if needed
-	for(int i=0;i < pVF->mNumElements;i++)
-	{
-		int	gSize	=grogSizes[i];
-		if(pVF->mpElements[i] == EL_POSITION)
+		if(bFlipZ)
 		{
-			for(int j=0;j < *pNumVerts;j++)
-			{
-				if(bFlipZ)
-				{
-					float	z	=*(float *)(pSquishSpace[i] + (j * gSize) + 8);
-					*(float *)(pSquishSpace[i] + (j * gSize) + 8)	=-z;
-				}
-				else
-				{
-//					float	x	=*(float *)(pSquishSpace[i] + (j * gSize));
-//					*(float *)(pSquishSpace[i] + (j * gSize))	=-x;
-				}
-			}
+			pos[2]	=-pos[2];
 		}
-		else if(pVF->mpElements[i] == EL_POSITION4)
-		{
-			for(int j=0;j < *pNumVerts;j++)
-			{
-				if(bFlipZ)
-				{
-					float	z	=*(float *)(pSquishSpace[i] + (j * gSize) + 8);
-					*(float *)(pSquishSpace[i] + (j * gSize) + 8)	=-z;
-				}
-				else
-				{
-//					float	x	=*(float *)(pSquishSpace[i] + (j * gSize));
-//					*(float *)(pSquishSpace[i] + (j * gSize))	=-x;
-				}
-			}
-		}
+
+		//position
+		glm_vec3_copy(pos, pRet[i].PositionU);
+
+		//UV
+		pRet[i].PositionU[3]	=tex[0];
+		norm[3]					=tex[1];
+
+		//normal and color and index
+		Misc_InterleaveVec3IdxToF16(norm, col, idx, pRet[i].NormVCol);
 	}
 
-	//ram for the assembled verts
-	void	*pVerts	=malloc(*pVertSize * *pNumVerts);
-
-	//assemble one at a time... PainPeko
-	for(int j=0;j < *pNumVerts;j++)
-	{
-		int	ofs		=0;
-		for(int i=0;i < pVF->mNumElements;i++)
-		{
-			int	gSize	=grogSizes[i];
-
-			//copy squished elements
-			memcpy((pVerts + (j * *pVertSize) + ofs),
-				pSquishSpace[i] + (j * gSize), gSize);
-
-			ofs	+=gSize;
-		}
-	}
-
-	//free squishface buffers
-	for(int i=0;i < pVF->mNumElements;i++)
-	{
-		free(pSquishSpace[i]);
-	}
-
-	return	pVerts;
+	return	pRet;
 }
 
 static void	sFillVertFormat(const struct json_object *pVAttr, VertFormat *pVF)

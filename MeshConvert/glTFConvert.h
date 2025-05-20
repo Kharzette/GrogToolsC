@@ -8,5 +8,5 @@ typedef struct	StuffKeeper_t		StuffKeeper;
 typedef struct	GraphicsDevice_t	GraphicsDevice;
 
 Character	*GLCV_ExtractChar(GraphicsDevice *pGD, const AnimLib *pALib, const StuffKeeper *pSK, const GLTFFile *pGF);
-Static		*GLCV_ExtractStatic(GraphicsDevice *pGD, const StuffKeeper *pSK, const GLTFFile *pGF);
+Static		*GLCV_ExtractStatic(GraphicsDevice *pGD, const StuffKeeper *pSK, const GLTFFile *pGF, bool bVColorIdx);
 void		GLCV_ExtractAndAddAnimation(const GLTFFile *pGF, AnimLib **ppALib);

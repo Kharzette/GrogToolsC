@@ -116,6 +116,7 @@ typedef struct AppContext_t
 	Edit		*mpTextInput;		//for renaming things
 	Button		*mpAnimLooping;		//loop?
 	Button		*mpAnimPingPong;	//bounce back and forth
+	Button		*mpVColorAsIdx;		//convert vert colors to indexes
 
 	//material form controls
 	Button		*mpTL0, *mpTL1, *mpTL2;
@@ -137,6 +138,17 @@ typedef struct AppContext_t
 //projection matrices
 __attribute((aligned(32)))	static mat4	sCamProj;
 __attribute((aligned(32)))	static mat4	sTextProj;
+//color table for custom colours
+__attribute((aligned(32)))	static vec4	sCTable[16]	={
+	{1,1,1,1},	//first is normally just tex color or whatever
+	//skin		 leftIris   rightIris  EyeLiner
+	{1,.6,.5,1}, {0,1,0,1}, {1,0,1,1}, {.2,.1,.1,1},
+	//Nails      hair         lip          innerMouth
+	{1,.3,.3,1}, {.5,0,.5,1}, {1,.2,.2,1}, {1,0,0,1},
+	//eyeSocketses
+	{1,1,1,1}, {1,1,1,1}, {1,1,1,1}, {1,1,1,1},
+	{1,1,1,1}, {1,1,1,1}, {1,1,1,1}
+};
 
 //function pointer types
 typedef void	(*ReNameFunc)(void *, const char *, const char *);
@@ -480,7 +492,7 @@ static AppContext	*sAppCreate(void)
 
 	//sublayouts for save / load buttons
 	Layout	*pSavLoadMeshLay	=layout_create(2, 3);
-	Layout	*pSavLoadMatLay		=layout_create(1, 2);
+	Layout	*pSavLoadMatLay		=layout_create(1, 3);
 	Layout	*pSavLoadAnimLay	=layout_create(1, 3);
 	Layout	*pAnButns			=layout_create(1, 2);
 
@@ -501,6 +513,7 @@ static AppContext	*sAppCreate(void)
 	//checkboxen
 	pApp->mpAnimLooping		=button_check();
 	pApp->mpAnimPingPong	=button_check();
+	pApp->mpVColorAsIdx		=button_check();
 
 	button_text(pLGLTFC, "Load gltf/glb Char");
 	button_text(pLChar, "Load Character");
@@ -518,6 +531,7 @@ static AppContext	*sAppCreate(void)
 
 	button_text(pApp->mpAnimLooping, "Anim Looping");
 	button_text(pApp->mpAnimPingPong, "Anim PingPong");
+	button_text(pApp->mpVColorAsIdx, "VColor As Index");
 
 	pApp->mpMeshPartLB	=listbox_create();
 	pApp->mpMaterialLB	=listbox_create();
@@ -539,8 +553,10 @@ static AppContext	*sAppCreate(void)
 	layout_button(pSavLoadMeshLay, pLStat, 1, 1);
 	layout_button(pSavLoadMeshLay, pSStat, 1, 2);
 
-	layout_button(pSavLoadMatLay, pLMat, 0, 0);
-	layout_button(pSavLoadMatLay, pSMat, 0, 1);
+	//check goes here
+	layout_button(pSavLoadMatLay, pApp->mpVColorAsIdx, 0, 0);
+	layout_button(pSavLoadMatLay, pLMat, 0, 1);
+	layout_button(pSavLoadMatLay, pSMat, 0, 2);
 
 	layout_button(pSavLoadAnimLay, pLGLTFA, 0, 0);
 	layout_button(pSavLoadAnimLay, pLAnim, 0, 1);
@@ -647,16 +663,6 @@ static AppContext	*sAppCreate(void)
 	//default cel shading
 	sSetDefaultCel(pApp);
 
-	//set a default colour table
-	{
-		vec4	goofyColours[]	={
-			{1,.8,.2,1}, {0,1,0,1}, {0,0,1,1}, {1,0,0,1},
-			{1,0,0,1}, {1,0,0,1}, {1,0,0,1}, {1,0,0,1}
-		};
-
-		CBK_SetCustomColours(pApp->mpCBK, goofyColours);
-	}
-	
 	//set sky gradient
 	{
 		vec3	skyHorizon	={	0.0f, 0.5f, 1.0f	};
@@ -829,6 +835,8 @@ static void sRender(AppContext *pApp, const real64_t prTime, const real64_t cTim
 		}
 	}
 	GD_PSSetSampler(pApp->mpGD, StuffKeeper_GetSamplerState(pApp->mpSK, "PointClamp"), 0);
+	
+	CBK_SetCustomColours(pApp->mpCBK, sCTable);
 
 	//draw mesh
 	if(pApp->mpChar != NULL)
@@ -1279,6 +1287,8 @@ static void sLoadGLTFStatic(AppContext *pAC, Event *pEvt)
 		return;
 	}
 
+	bool	bIdx	=(button_get_state(pAC->mpVColorAsIdx) == ekGUI_ON);
+
 	printf("glTF load fileName: %s\n", pFileName);
 
 	if(pAC->mpStatic != NULL)
@@ -1298,7 +1308,7 @@ static void sLoadGLTFStatic(AppContext *pAC, Event *pEvt)
 		pGF	=GLTF_Create(pFileName);
 	}
 
-	pAC->mpStatic	=GLCV_ExtractStatic(pAC->mpGD, pAC->mpSK, pGF);
+	pAC->mpStatic	=GLCV_ExtractStatic(pAC->mpGD, pAC->mpSK, pGF, bIdx);
 
 	StringList	*pParts	=Static_GetPartList(pAC->mpStatic);
 

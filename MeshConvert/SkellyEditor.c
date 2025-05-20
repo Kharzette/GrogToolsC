@@ -49,9 +49,8 @@ typedef struct	BoneDisplayData_t
 typedef struct	SkellyEditor_t
 {
 	//D3D stuff
-	ID3D11InputLayout		*mpPrimLayout;
 	ID3D11VertexShader		*mpWNormWPos;
-	ID3D11PixelShader		*mpTriSolidSpec;
+	ID3D11PixelShader		*mpTriPS;
 
 	//grogstuff
 	GraphicsDevice	*mpGD;
@@ -143,9 +142,9 @@ SkellyEditor	*SKE_Create(StuffKeeper *pSK, GraphicsDevice *pGD,
 	pRet->mpBoneCollapse	=Mover_Create();
 
 	//for prim draws
-	pRet->mpPrimLayout		=StuffKeeper_GetInputLayout(pSK, "VPosNorm");
-	pRet->mpWNormWPos		=StuffKeeper_GetVertexShader(pSK, "WNormWPosVS");
-	pRet->mpTriSolidSpec	=StuffKeeper_GetPixelShader(pSK, "TriSolidSpecPS");
+//	pRet->mpPrimLayout		=StuffKeeper_GetInputLayout(pSK, "VPosNorm");
+	pRet->mpWNormWPos	=StuffKeeper_GetVertexShader(pSK, "WNormWPosTexColIdxVS");
+	pRet->mpTriPS		=StuffKeeper_GetPixelShader(pSK, "TriPS");
 
 	//prims
 	pRet->mpCube	=PF_CreateCube(1.0f, true, pGD);
@@ -516,7 +515,7 @@ static void sRenderNodeCollisionShape(const SkellyEditor *pSKE,
 
 		glm_translate(boneMat, center);
 
-		GD_IASetVertexBuffers(pSKE->mpGD, pSKE->mpCube->mpVB, pSKE->mpCube->mVertSize, 0);
+		GD_VSSetSRV(pSKE->mpGD, pSKE->mpCube->mpVBSRV, 0);
 		GD_IASetIndexBuffers(pSKE->mpGD, pSKE->mpCube->mpIB, DXGI_FORMAT_R16_UINT, 0);
 	}
 	else if(choice == BONE_COL_SHAPE_SPHERE)
@@ -529,7 +528,7 @@ static void sRenderNodeCollisionShape(const SkellyEditor *pSKE,
 
 		glm_vec3_broadcast(size[3], localScale);
 
-		GD_IASetVertexBuffers(pSKE->mpGD, pSKE->mpSphere->mpVB, pSKE->mpSphere->mVertSize, 0);
+		GD_VSSetSRV(pSKE->mpGD, pSKE->mpSphere->mpVBSRV, 0);
 		GD_IASetIndexBuffers(pSKE->mpGD, pSKE->mpSphere->mpIB, DXGI_FORMAT_R16_UINT, 0);
 	}
 	else if(choice == BONE_COL_SHAPE_CAPSULE)
@@ -543,13 +542,12 @@ static void sRenderNodeCollisionShape(const SkellyEditor *pSKE,
 		localScale[1]	=size[1] * 0.25f;
 
 		//no translation for capsules I think?
-		GD_IASetVertexBuffers(pSKE->mpGD, pSKE->mpCapsule->mpVB, pSKE->mpCapsule->mVertSize, 0);
+		GD_VSSetSRV(pSKE->mpGD, pSKE->mpCapsule->mpVBSRV, 0);
 		GD_IASetIndexBuffers(pSKE->mpGD, pSKE->mpCapsule->mpIB, DXGI_FORMAT_R16_UINT, 0);
 	}
 
 	GD_VSSetShader(pSKE->mpGD, pSKE->mpWNormWPos);
-	GD_PSSetShader(pSKE->mpGD, pSKE->mpTriSolidSpec);
-	GD_IASetInputLayout(pSKE->mpGD, pSKE->mpPrimLayout);
+	GD_PSSetShader(pSKE->mpGD, pSKE->mpTriPS);
 
 	//materialish stuff
 	CBK_SetSolidColour(pSKE->mpCBK, colour);
