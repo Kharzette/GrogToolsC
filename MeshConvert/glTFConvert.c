@@ -207,7 +207,8 @@ static BufferView	*sGetBufferViews(const struct json_object *pBV)
 
 Character	*GLCV_ExtractChar(GraphicsDevice *pGD,
 	const AnimLib *pALib,
-	const StuffKeeper *pSK, const GLTFFile *pGF)
+	const StuffKeeper *pSK, const GLTFFile *pGF,
+	bool bVColorIdx)
 {
 	assert(pGF != NULL);
 
@@ -266,7 +267,7 @@ Character	*GLCV_ExtractChar(GraphicsDevice *pGD,
 	for(int i=0;i < numMeshes;i++)
 	{
 		pMeshArr[i]	=MeshStuff_MakeMeshIndex(pGD, pSK, pMeshes,
-						pGF->mpBinChunk, pAcs, pBVs, false, false, i);
+						pGF->mpBinChunk, pAcs, pBVs, false, bVColorIdx, i);
 	}
 
 	Character	*pChar	=Character_Create(pSkin, pMeshArr, numMeshes);

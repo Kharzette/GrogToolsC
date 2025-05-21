@@ -25,14 +25,25 @@ typedef struct	StaticVert_t
 	uint32_t	NormVCol[4];
 }	StaticVert;
 
+typedef struct	CharacterVert_t
+{
+	vec4		PositionU;
+	uint32_t	NormVCol[4];
+	uint32_t	Bone[4];
+}	CharacterVert;
+
 //static forward decs
 static void	sFillVertFormat(const struct json_object *pVAttr, VertFormat *pVF);
 static int	sSizeForAccType(const Accessor *pAcc);
 static mat4	*sGetIBP(const uint8_t *pBin, const Accessor *pAcc, const BufferView *pBVs);
-static StaticVert	*sMakeMeshData(GraphicsDevice *pGD,
+static StaticVert	*sMakeStaticMeshData(GraphicsDevice *pGD,
 	const VertFormat *pVF, const BufferView *pBVs,
 	const Accessor *pAccs, const uint8_t *pBin,
-	bool bFlipZ, bool bVCIdx, int *pNumVerts, int *pVertSize);
+	bool bVCIdx, int *pNumVerts, int *pVertSize);
+static CharacterVert	*sMakeCharacterMeshData(GraphicsDevice *pGD,
+	const VertFormat *pVF, const BufferView *pBVs,
+	const Accessor *pAccs, const uint8_t *pBin,
+	bool bVColorIndexes, int *pNumVerts, int *pVertSize);
 
 
 //for nodes that are just tied to static mesh parts
@@ -196,7 +207,7 @@ Mesh	*MeshStuff_MakeMeshIndex(GraphicsDevice *pGD,
 	const StuffKeeper *pSK,
 	const struct json_object *pMeshes,
 	const uint8_t *pBin, const Accessor *pAccs,
-	const BufferView *pBVs, bool bFlipZ, bool bVColorIndex, int index)
+	const BufferView *pBVs, bool bStatic, bool bVColorIndex, int index)
 {
 	int	numMeshes	=json_object_array_length(pMeshes);
 
@@ -262,9 +273,18 @@ Mesh	*MeshStuff_MakeMeshIndex(GraphicsDevice *pGD,
 	}
 
 	//create mesh
-	int	numVerts, vSize;
-	void	*pVData	=sMakeMeshData(pGD, pVF, pBVs,
-		pAccs, pBin, bFlipZ, bVColorIndex, &numVerts, &vSize);
+	int		numVerts, vSize;
+	void	*pVData;
+	if(bStatic)
+	{
+		pVData	=sMakeStaticMeshData(pGD, pVF, pBVs,
+			pAccs, pBin, bVColorIndex, &numVerts, &vSize);
+	}
+	else
+	{
+		pVData	=sMakeCharacterMeshData(pGD, pVF, pBVs,
+			pAccs, pBin, bVColorIndex, &numVerts, &vSize);
+	}
 
 	//index data
 	const Accessor		*pIndAcc	=&pAccs[indAccessIndex];
@@ -312,10 +332,10 @@ static mat4	*sGetIBP(const uint8_t *pBin, const Accessor *pAcc,
 }
 
 //return numVerts, vertSize, and pointer to Data
-static StaticVert	*sMakeMeshData(GraphicsDevice *pGD,
+static StaticVert	*sMakeStaticMeshData(GraphicsDevice *pGD,
 	const VertFormat *pVF, const BufferView *pBVs,
 	const Accessor *pAccs, const uint8_t *pBin,
-	bool bFlipZ, bool bVColorIndexes, int *pNumVerts, int *pVertSize)
+	bool bVColorIndexes, int *pNumVerts, int *pVertSize)
 {
 	//calc total size of the buffer needed
 	int	vSize	=0;
@@ -438,9 +458,150 @@ static StaticVert	*sMakeMeshData(GraphicsDevice *pGD,
 			}
 		}
 
-		if(bFlipZ)
+		//right to left
+		pos[2]	=-pos[2];
+
+		//position
+		glm_vec3_copy(pos, pRet[i].PositionU);
+
+		//UV
+		pRet[i].PositionU[3]	=tex[0];
+		norm[3]					=tex[1];
+
+		//normal and color and index
+		Misc_InterleaveVec4IdxToF16(norm, col, idx, pRet[i].NormVCol);
+	}
+
+	return	pRet;
+}
+
+//return numVerts, vertSize, and pointer to Data
+static CharacterVert	*sMakeCharacterMeshData(GraphicsDevice *pGD,
+	const VertFormat *pVF, const BufferView *pBVs,
+	const Accessor *pAccs, const uint8_t *pBin,
+	bool bVColorIndexes, int *pNumVerts, int *pVertSize)
+{
+	//calc total size of the buffer needed
+	int	vSize	=0;
+	for(int i=0;i < pVF->mNumElements;i++)
+	{
+		int	acc	=pVF->mpElAccess[i];
+
+		vSize	+=sSizeForAccType(&pAccs[acc]);
+	}
+
+	//grab element zero's count
+	*pNumVerts	=pAccs[pVF->mpElAccess[0]].mCount;
+
+	//ensure all elements have the same count
+	for(int i=0;i < pVF->mNumElements;i++)
+	{
+		int	acc	=pVF->mpElAccess[i];
+
+		assert(pAccs[acc].mCount == *pNumVerts);
+	}
+
+	//do some basic checks on sizes
+	for(int i=0;i < pVF->mNumElements;i++)
+	{
+		int	acc	=pVF->mpElAccess[i];
+		int	bv	=pAccs[acc].mBufferView;
+
+		assert(pBVs[bv].mBufIdx == 0);
+
+		int	elSize	=sSizeForAccType(&pAccs[acc]);
+
+		assert(pBVs[bv].mByteLength == (elSize * *pNumVerts));
+	}
+
+	*pVertSize	=sizeof(CharacterVert);
+
+	CharacterVert	*pRet	=malloc(sizeof(CharacterVert) * *pNumVerts);
+
+	for(int i=0;i < *pNumVerts;i++)
+	{
+		vec4		pos;
+		vec3		col		={	1,1,1	};
+		vec3		norm;
+		vec2		tex;
+		uint16_t	idx		=69;
+		uint8_t		boneIdxs[4]	={	0,0,0,0	};
+		vec4		weights		={	1,0,0,0	};
+
+		for(int j=0;j < pVF->mNumElements;j++)
 		{
-			pos[2]	=-pos[2];
+			int	acc		=pVF->mpElAccess[j];
+			int	bv		=pAccs[acc].mBufferView;
+			int	glSize	=sSizeForAccType(&pAccs[acc]);
+			int	ofs		=pBVs[bv].mByteOffset + i * glSize;
+			int	elTotal	=pBVs[bv].mByteLength;
+
+			switch(pVF->mpElements[j])
+			{
+				case	EL_POSITION:
+					glm_vec3_copy((const float *)&pBin[ofs], pos);
+					break;
+				case	EL_POSITION2:
+					glm_vec2_copy((const float *)&pBin[ofs], pos);
+					break;
+				case	EL_POSITION4:
+					glm_vec4_copy((const float *)&pBin[ofs], pos);
+					break;
+				case	EL_BINDICES:
+					memcpy(boneIdxs, &pBin[ofs], 4);
+					break;
+				case	EL_BWEIGHTS:
+					memcpy(weights, &pBin[ofs], 16);
+					break;
+				case	EL_COLOR:
+					if(pAccs[acc].mComponentType == CTYPE_BYTE)
+					{
+						vec4	col4, colLin;
+						
+						Misc_RGBAToVec4(pBin[ofs], col4);
+						Misc_SRGBToLinear(col4, colLin);
+						glm_vec3_copy(colLin, col);
+
+						if(bVColorIndexes)
+						{
+							//index in red, round
+							idx	=((col4[0] * 255.0f) + 0.5f);
+						}
+					}
+					else if(pAccs[acc].mComponentType == CTYPE_USHORT)
+					{
+						vec4	col4, colLin;
+
+						Misc_RGBA16ToVec4(*((uint64_t *)&pBin[ofs]), col4);
+						Misc_SRGBToLinear(col4, colLin);
+						glm_vec3_copy(colLin, col);
+
+						if(bVColorIndexes)
+						{
+							//index in red, round
+							idx	=((col4[0] * 255.0f) + 0.5f);
+						}
+					}
+					else
+					{
+						assert(false);	//dunno!
+					}
+					break;
+				case	EL_NORMAL:
+					glm_vec3_copy((const float *)&pBin[ofs], norm);
+					break;
+				case	EL_TANGENT:
+					assert(false);
+					break;
+				case	EL_TEXCOORD:
+					glm_vec2_copy((const float *)&pBin[ofs], tex);
+					break;
+				case	EL_TEXCOORD4:
+					assert(false);
+					break;
+				default:
+					assert(false);
+			}
 		}
 
 		//position
@@ -451,7 +612,10 @@ static StaticVert	*sMakeMeshData(GraphicsDevice *pGD,
 		norm[3]					=tex[1];
 
 		//normal and color and index
-		Misc_InterleaveVec3IdxToF16(norm, col, idx, pRet[i].NormVCol);
+		Misc_InterleaveVec4IdxToF16(norm, col, idx, pRet[i].NormVCol);
+
+		//bone data
+		Misc_InterleaveBone(weights, boneIdxs, idx, pRet[i].Bone);
 	}
 
 	return	pRet;

@@ -1232,6 +1232,8 @@ static void sLoadGLTFChar(AppContext *pAC, Event *pEvt)
 		return;
 	}
 
+	bool	bIdx	=(button_get_state(pAC->mpVColorAsIdx) == ekGUI_ON);
+
 	printf("glTF load fileName: %s\n", pFileName);
 
 	if(pAC->mpChar != NULL)
@@ -1251,7 +1253,7 @@ static void sLoadGLTFChar(AppContext *pAC, Event *pEvt)
 		pGF	=GLTF_Create(pFileName);
 	}
 
-	pAC->mpChar	=GLCV_ExtractChar(pAC->mpGD, pAC->mpALib, pAC->mpSK, pGF);
+	pAC->mpChar	=GLCV_ExtractChar(pAC->mpGD, pAC->mpALib, pAC->mpSK, pGF, bIdx);
 
 	//pass along to other gumps
 	SKE_SetCharacter(pAC->mpSKE, pAC->mpChar);
