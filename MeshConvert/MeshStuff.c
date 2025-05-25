@@ -377,8 +377,8 @@ static StaticVert	*sMakeStaticMeshData(GraphicsDevice *pGD,
 	for(int i=0;i < *pNumVerts;i++)
 	{
 		vec4		pos;
-		vec3		col		={	1,1,1	};
-		vec3		norm;
+		vec4		col		={	1,1,1,1	};
+		vec4		norm;
 		vec2		tex;
 		uint16_t	idx		=69;
 
@@ -388,7 +388,6 @@ static StaticVert	*sMakeStaticMeshData(GraphicsDevice *pGD,
 			int	bv		=pAccs[acc].mBufferView;
 			int	glSize	=sSizeForAccType(&pAccs[acc]);
 			int	ofs		=pBVs[bv].mByteOffset + i * glSize;
-			int	elTotal	=pBVs[bv].mByteLength;
 
 			switch(pVF->mpElements[j])
 			{
@@ -414,7 +413,7 @@ static StaticVert	*sMakeStaticMeshData(GraphicsDevice *pGD,
 						
 						Misc_RGBAToVec4(pBin[ofs], col4);
 						Misc_SRGBToLinear(col4, colLin);
-						glm_vec3_copy(colLin, col);
+						glm_vec4_copy(colLin, col);
 
 						if(bVColorIndexes)
 						{
@@ -428,12 +427,15 @@ static StaticVert	*sMakeStaticMeshData(GraphicsDevice *pGD,
 
 						Misc_RGBA16ToVec4(*((uint64_t *)&pBin[ofs]), col4);
 						Misc_SRGBToLinear(col4, colLin);
-						glm_vec3_copy(colLin, col);
+						glm_vec4_copy(colLin, col);
 
 						if(bVColorIndexes)
 						{
 							//index in red, round
-							idx	=((col4[0] * 255.0f) + 0.5f);
+							idx	=*(((uint16_t *)pBin) + (ofs / 2));
+
+							//very much a trial and error thing
+							idx	=(uint16_t)(((float)idx / 20.0f) + 0.5f);
 						}
 					}
 					else
@@ -521,8 +523,8 @@ static CharacterVert	*sMakeCharacterMeshData(GraphicsDevice *pGD,
 	for(int i=0;i < *pNumVerts;i++)
 	{
 		vec4		pos;
-		vec3		col		={	1,1,1	};
-		vec3		norm;
+		vec4		col		={	1,1,1,1	};
+		vec4		norm;
 		vec2		tex;
 		uint16_t	idx		=69;
 		uint8_t		boneIdxs[4]	={	0,0,0,0	};
@@ -534,7 +536,6 @@ static CharacterVert	*sMakeCharacterMeshData(GraphicsDevice *pGD,
 			int	bv		=pAccs[acc].mBufferView;
 			int	glSize	=sSizeForAccType(&pAccs[acc]);
 			int	ofs		=pBVs[bv].mByteOffset + i * glSize;
-			int	elTotal	=pBVs[bv].mByteLength;
 
 			switch(pVF->mpElements[j])
 			{
@@ -560,7 +561,7 @@ static CharacterVert	*sMakeCharacterMeshData(GraphicsDevice *pGD,
 						
 						Misc_RGBAToVec4(pBin[ofs], col4);
 						Misc_SRGBToLinear(col4, colLin);
-						glm_vec3_copy(colLin, col);
+						glm_vec4_copy(colLin, col);
 
 						if(bVColorIndexes)
 						{
@@ -574,12 +575,15 @@ static CharacterVert	*sMakeCharacterMeshData(GraphicsDevice *pGD,
 
 						Misc_RGBA16ToVec4(*((uint64_t *)&pBin[ofs]), col4);
 						Misc_SRGBToLinear(col4, colLin);
-						glm_vec3_copy(colLin, col);
+						glm_vec4_copy(colLin, col);
 
 						if(bVColorIndexes)
 						{
 							//index in red, round
-							idx	=((col4[0] * 255.0f) + 0.5f);
+							idx	=*(((uint16_t *)pBin) + (ofs / 2));
+
+							//very much a trial and error thing
+							idx	=(uint16_t)(((float)idx / 20.0f) + 0.5f);
 						}
 					}
 					else
