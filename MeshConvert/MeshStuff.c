@@ -39,11 +39,11 @@ static mat4	*sGetIBP(const uint8_t *pBin, const Accessor *pAcc, const BufferView
 static StaticVert	*sMakeStaticMeshData(GraphicsDevice *pGD,
 	const VertFormat *pVF, const BufferView *pBVs,
 	const Accessor *pAccs, const uint8_t *pBin,
-	bool bVCIdx, int *pNumVerts, int *pVertSize);
+	int *pNumVerts, int *pVertSize);
 static CharacterVert	*sMakeCharacterMeshData(GraphicsDevice *pGD,
 	const VertFormat *pVF, const BufferView *pBVs,
 	const Accessor *pAccs, const uint8_t *pBin,
-	bool bVColorIndexes, int *pNumVerts, int *pVertSize);
+	int *pNumVerts, int *pVertSize);
 
 
 //for nodes that are just tied to static mesh parts
@@ -207,7 +207,7 @@ Mesh	*MeshStuff_MakeMeshIndex(GraphicsDevice *pGD,
 	const StuffKeeper *pSK,
 	const struct json_object *pMeshes,
 	const uint8_t *pBin, const Accessor *pAccs,
-	const BufferView *pBVs, bool bStatic, bool bVColorIndex, int index)
+	const BufferView *pBVs, bool bStatic, int index)
 {
 	int	numMeshes	=json_object_array_length(pMeshes);
 
@@ -219,15 +219,15 @@ Mesh	*MeshStuff_MakeMeshIndex(GraphicsDevice *pGD,
 	//the returned matched vert format
 	VertFormat	*pVF	=malloc(sizeof(VertFormat));
 	
-//	printf("Mesh %d\n", index);
+	printf("Mesh %d\n", index);
 	
 	const struct json_object	*pArr	=json_object_array_get_idx(pMeshes, index);
 	
 	json_object_object_foreach(pArr, pKey, pVal)
 	{
 		enum json_type	t	=json_object_get_type(pVal);
-//		printf("KeyValue: %s : %s,%s\n", pKey, json_type_to_name(t),
-//			json_object_get_string(pVal));
+		printf("KeyValue: %s : %s,%s\n", pKey, json_type_to_name(t),
+			json_object_get_string(pVal));
 		
 		if(0 == strncmp("primitives", pKey, 10))
 		{
@@ -240,9 +240,9 @@ Mesh	*MeshStuff_MakeMeshIndex(GraphicsDevice *pGD,
 			json_object_object_foreach(pAtArr, pPrimKey, pPrimVal)
 			{
 				enum json_type	tprim	=json_object_get_type(pPrimVal);
-//				printf("AttrKeyValue: %s : %s,%s\n", pPrimKey,
-//					json_type_to_name(tprim),
-//					json_object_get_string(pPrimVal));
+				printf("AttrKeyValue: %s : %s,%s\n", pPrimKey,
+					json_type_to_name(tprim),
+					json_object_get_string(pPrimVal));
 
 				if(0 == strncmp("attributes", pPrimKey, 10))
 				{
@@ -278,12 +278,12 @@ Mesh	*MeshStuff_MakeMeshIndex(GraphicsDevice *pGD,
 	if(bStatic)
 	{
 		pVData	=sMakeStaticMeshData(pGD, pVF, pBVs,
-			pAccs, pBin, bVColorIndex, &numVerts, &vSize);
+			pAccs, pBin, &numVerts, &vSize);
 	}
 	else
 	{
 		pVData	=sMakeCharacterMeshData(pGD, pVF, pBVs,
-			pAccs, pBin, bVColorIndex, &numVerts, &vSize);
+			pAccs, pBin, &numVerts, &vSize);
 	}
 
 	//index data
@@ -335,7 +335,7 @@ static mat4	*sGetIBP(const uint8_t *pBin, const Accessor *pAcc,
 static StaticVert	*sMakeStaticMeshData(GraphicsDevice *pGD,
 	const VertFormat *pVF, const BufferView *pBVs,
 	const Accessor *pAccs, const uint8_t *pBin,
-	bool bVColorIndexes, int *pNumVerts, int *pVertSize)
+	int *pNumVerts, int *pVertSize)
 {
 	//calc total size of the buffer needed
 	int	vSize	=0;
@@ -414,12 +414,6 @@ static StaticVert	*sMakeStaticMeshData(GraphicsDevice *pGD,
 						Misc_RGBAToVec4(pBin[ofs], col4);
 						Misc_SRGBToLinear(col4, colLin);
 						glm_vec4_copy(colLin, col);
-
-						if(bVColorIndexes)
-						{
-							//index in red, round
-							idx	=((col4[0] * 255.0f) + 0.5f);
-						}
 					}
 					else if(pAccs[acc].mComponentType == CTYPE_USHORT)
 					{
@@ -428,15 +422,6 @@ static StaticVert	*sMakeStaticMeshData(GraphicsDevice *pGD,
 						Misc_RGBA16ToVec4(*((uint64_t *)&pBin[ofs]), col4);
 						Misc_SRGBToLinear(col4, colLin);
 						glm_vec4_copy(colLin, col);
-
-						if(bVColorIndexes)
-						{
-							//index in red, round
-							idx	=*(((uint16_t *)pBin) + (ofs / 2));
-
-							//very much a trial and error thing
-							idx	=(uint16_t)(((float)idx / 20.0f) + 0.5f);
-						}
 					}
 					else
 					{
@@ -455,6 +440,11 @@ static StaticVert	*sMakeStaticMeshData(GraphicsDevice *pGD,
 				case	EL_TEXCOORD4:
 					assert(false);
 					break;
+				case	EL_DATA:
+					//super annoying that blender makes these floats
+					idx	=*(((float *)pBin) + pBVs[bv].mByteOffset + i);
+//					printf(" %d,", idx);
+					break;
 				default:
 					assert(false);					
 			}
@@ -462,6 +452,7 @@ static StaticVert	*sMakeStaticMeshData(GraphicsDevice *pGD,
 
 		//right to left
 		pos[2]	=-pos[2];
+		norm[2]	=-norm[2];
 
 		//position
 		glm_vec3_copy(pos, pRet[i].PositionU);
@@ -481,7 +472,7 @@ static StaticVert	*sMakeStaticMeshData(GraphicsDevice *pGD,
 static CharacterVert	*sMakeCharacterMeshData(GraphicsDevice *pGD,
 	const VertFormat *pVF, const BufferView *pBVs,
 	const Accessor *pAccs, const uint8_t *pBin,
-	bool bVColorIndexes, int *pNumVerts, int *pVertSize)
+	int *pNumVerts, int *pVertSize)
 {
 	//calc total size of the buffer needed
 	int	vSize	=0;
@@ -562,12 +553,6 @@ static CharacterVert	*sMakeCharacterMeshData(GraphicsDevice *pGD,
 						Misc_RGBAToVec4(pBin[ofs], col4);
 						Misc_SRGBToLinear(col4, colLin);
 						glm_vec4_copy(colLin, col);
-
-						if(bVColorIndexes)
-						{
-							//index in red, round
-							idx	=((col4[0] * 255.0f) + 0.5f);
-						}
 					}
 					else if(pAccs[acc].mComponentType == CTYPE_USHORT)
 					{
@@ -576,15 +561,6 @@ static CharacterVert	*sMakeCharacterMeshData(GraphicsDevice *pGD,
 						Misc_RGBA16ToVec4(*((uint64_t *)&pBin[ofs]), col4);
 						Misc_SRGBToLinear(col4, colLin);
 						glm_vec4_copy(colLin, col);
-
-						if(bVColorIndexes)
-						{
-							//index in red, round
-							idx	=*(((uint16_t *)pBin) + (ofs / 2));
-
-							//very much a trial and error thing
-							idx	=(uint16_t)(((float)idx / 20.0f) + 0.5f);
-						}
 					}
 					else
 					{
@@ -678,6 +654,16 @@ static void	sFillVertFormat(const struct json_object *pVAttr, VertFormat *pVF)
 		else if(0 == strncmp("WEIGHTS", pKey, 7))
 		{
 			pVF->mpElements[elIdx]	=EL_BWEIGHTS;
+		}
+		else if(pKey[0] == '_')
+		{
+			//blender will export attributes that start with _
+			pVF->mpElements[elIdx]	=EL_DATA;
+		}
+		else
+		{
+			//dunno what this is
+			assert(false);
 		}
 
 		elIdx++;

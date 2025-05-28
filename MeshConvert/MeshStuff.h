@@ -17,7 +17,7 @@ Mesh	*MeshStuff_MakeMeshIndex(GraphicsDevice *pGD,
 	const StuffKeeper *pSK,
 	const struct json_object *pMeshes,
 	const uint8_t *pBin, const Accessor *pAccs,
-	const BufferView *pBVs, bool bStatic, bool bVColorIdx, int index);
+	const BufferView *pBVs, bool bStatic, int index);
 
 void	MeshStuff_GetStaticPartTransforms(const struct json_object *pNodes,
 	mat4 xForms[], int numParts);

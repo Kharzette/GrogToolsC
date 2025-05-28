@@ -116,7 +116,6 @@ typedef struct AppContext_t
 	Edit		*mpTextInput;		//for renaming things
 	Button		*mpAnimLooping;		//loop?
 	Button		*mpAnimPingPong;	//bounce back and forth
-	Button		*mpVColorAsIdx;		//convert vert colors to indexes
 
 	//material form controls
 	Button		*mpTL0, *mpTL1, *mpTL2;
@@ -138,16 +137,44 @@ typedef struct AppContext_t
 //projection matrices
 __attribute((aligned(32)))	static mat4	sCamProj;
 __attribute((aligned(32)))	static mat4	sTextProj;
-//color table for custom colours
+
+//color table for custom colours, cur game using:
+//		Table
+//			Skin		0x01
+//			LeftEye		0x02
+//			RightEye	0x03
+//			EyeLiner	0x04
+//			Nails		0x05
+//			Hair		0x06
+//			Lips		0x07
+//			InMouth		0x08
+//			Cloth		0x09
+//			DecMetal	0x0A
+//			Leather		0x0B
+//			ArmourMet	0x0C
+//			EyeWhite	0x0D
 __attribute((aligned(32)))	static vec4	sCTable[16]	={
 	{1,1,1,1},	//first is normally just tex color or whatever
 	//skin		 leftIris   rightIris  EyeLiner
 	{1,.6,.5,1}, {0,1,0,1}, {1,0,1,1}, {.2,.1,.1,1},
 	//Nails      hair         lip          innerMouth
 	{1,.3,.3,1}, {.5,0,.5,1}, {1,.2,.2,1}, {1,0,0,1},
-	//eyeSocketses
-	{1,1,1,1}, {1,1,1,1}, {1,1,1,1}, {1,1,1,1},
+	//cloth		DecMetal		Leather			ArmourMetal
+	{1,1,1,1}, {1,0.8,0.1,1}, {0.2,0.2,0.1,1}, {0.7,0.7,0.7,1},
+	//EyeWhite
 	{1,1,1,1}, {1,1,1,1}, {1,1,1,1}
+};
+
+static float	sSPowTable[16]	=
+{
+	4,	//won't be used?
+	//skin	leftIris	rightIris	EyeLiner
+	5,		115,		115,			2,
+	//Nails hair    lip innerMouth
+	11,		9,		8,	1,
+	//cloth	DecMetal	Leather	ArmourMetal	EyeWhite
+	3,		33,			5,		22,			88,
+	1, 1
 };
 
 //function pointer types
@@ -492,7 +519,7 @@ static AppContext	*sAppCreate(void)
 
 	//sublayouts for save / load buttons
 	Layout	*pSavLoadMeshLay	=layout_create(2, 3);
-	Layout	*pSavLoadMatLay		=layout_create(1, 3);
+	Layout	*pSavLoadMatLay		=layout_create(1, 2);
 	Layout	*pSavLoadAnimLay	=layout_create(1, 3);
 	Layout	*pAnButns			=layout_create(1, 2);
 
@@ -513,7 +540,6 @@ static AppContext	*sAppCreate(void)
 	//checkboxen
 	pApp->mpAnimLooping		=button_check();
 	pApp->mpAnimPingPong	=button_check();
-	pApp->mpVColorAsIdx		=button_check();
 
 	button_text(pLGLTFC, "Load gltf/glb Char");
 	button_text(pLChar, "Load Character");
@@ -531,7 +557,6 @@ static AppContext	*sAppCreate(void)
 
 	button_text(pApp->mpAnimLooping, "Anim Looping");
 	button_text(pApp->mpAnimPingPong, "Anim PingPong");
-	button_text(pApp->mpVColorAsIdx, "VColor As Index");
 
 	pApp->mpMeshPartLB	=listbox_create();
 	pApp->mpMaterialLB	=listbox_create();
@@ -554,9 +579,8 @@ static AppContext	*sAppCreate(void)
 	layout_button(pSavLoadMeshLay, pSStat, 1, 2);
 
 	//check goes here
-	layout_button(pSavLoadMatLay, pApp->mpVColorAsIdx, 0, 0);
-	layout_button(pSavLoadMatLay, pLMat, 0, 1);
-	layout_button(pSavLoadMatLay, pSMat, 0, 2);
+	layout_button(pSavLoadMatLay, pLMat, 0, 0);
+	layout_button(pSavLoadMatLay, pSMat, 0, 1);
 
 	layout_button(pSavLoadAnimLay, pLGLTFA, 0, 0);
 	layout_button(pSavLoadAnimLay, pLAnim, 0, 1);
@@ -820,6 +844,8 @@ static void sRender(AppContext *pApp, const real64_t prTime, const real64_t cTim
 	PP_ClearDepth(pApp->mpPP, pApp->mpGD, "BackDepth");
 	PP_ClearTarget(pApp->mpPP, pApp->mpGD, "BackColor");
 
+	CBK_SetCustomColours(pApp->mpCBK, sCTable, sSPowTable);
+
 	//update frame CB
 	CBK_UpdateFrame(pApp->mpCBK, pApp->mpGD);
 	CBK_UpdateCustomColours(pApp->mpCBK, pApp->mpGD);
@@ -836,7 +862,6 @@ static void sRender(AppContext *pApp, const real64_t prTime, const real64_t cTim
 	}
 	GD_PSSetSampler(pApp->mpGD, StuffKeeper_GetSamplerState(pApp->mpSK, "PointClamp"), 0);
 	
-	CBK_SetCustomColours(pApp->mpCBK, sCTable);
 
 	//draw mesh
 	if(pApp->mpChar != NULL)
@@ -1232,8 +1257,6 @@ static void sLoadGLTFChar(AppContext *pAC, Event *pEvt)
 		return;
 	}
 
-	bool	bIdx	=(button_get_state(pAC->mpVColorAsIdx) == ekGUI_ON);
-
 	printf("glTF load fileName: %s\n", pFileName);
 
 	if(pAC->mpChar != NULL)
@@ -1253,7 +1276,7 @@ static void sLoadGLTFChar(AppContext *pAC, Event *pEvt)
 		pGF	=GLTF_Create(pFileName);
 	}
 
-	pAC->mpChar	=GLCV_ExtractChar(pAC->mpGD, pAC->mpALib, pAC->mpSK, pGF, bIdx);
+	pAC->mpChar	=GLCV_ExtractChar(pAC->mpGD, pAC->mpALib, pAC->mpSK, pGF);
 
 	//pass along to other gumps
 	SKE_SetCharacter(pAC->mpSKE, pAC->mpChar);
@@ -1289,8 +1312,6 @@ static void sLoadGLTFStatic(AppContext *pAC, Event *pEvt)
 		return;
 	}
 
-	bool	bIdx	=(button_get_state(pAC->mpVColorAsIdx) == ekGUI_ON);
-
 	printf("glTF load fileName: %s\n", pFileName);
 
 	if(pAC->mpStatic != NULL)
@@ -1310,7 +1331,7 @@ static void sLoadGLTFStatic(AppContext *pAC, Event *pEvt)
 		pGF	=GLTF_Create(pFileName);
 	}
 
-	pAC->mpStatic	=GLCV_ExtractStatic(pAC->mpGD, pAC->mpSK, pGF, bIdx);
+	pAC->mpStatic	=GLCV_ExtractStatic(pAC->mpGD, pAC->mpSK, pGF);
 
 	StringList	*pParts	=Static_GetPartList(pAC->mpStatic);
 
