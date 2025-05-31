@@ -49,7 +49,7 @@ typedef struct	BoneDisplayData_t
 typedef struct	SkellyEditor_t
 {
 	//D3D stuff
-	ID3D11VertexShader		*mpWNormWPos;
+	ID3D11VertexShader		*mpStaticVS;
 	ID3D11PixelShader		*mpTriPS;
 
 	//grogstuff
@@ -142,8 +142,7 @@ SkellyEditor	*SKE_Create(StuffKeeper *pSK, GraphicsDevice *pGD,
 	pRet->mpBoneCollapse	=Mover_Create();
 
 	//for prim draws
-//	pRet->mpPrimLayout		=StuffKeeper_GetInputLayout(pSK, "VPosNorm");
-	pRet->mpWNormWPos	=StuffKeeper_GetVertexShader(pSK, "WNormWPosTexColIdxVS");
+	pRet->mpStaticVS	=StuffKeeper_GetVertexShader(pSK, "StaticVS");
 	pRet->mpTriPS		=StuffKeeper_GetPixelShader(pSK, "TriPS");
 
 	//prims
@@ -293,7 +292,7 @@ void	SKE_MakeClayLayout(SkellyEditor *pSKE)
 			.layoutDirection = CLAY_TOP_TO_BOTTOM,
 			.sizing = { .width = CLAY_SIZING_FIXED(mvPos[0]),
 			.height = CLAY_SIZING_FIT(0) }
-			}, .scroll = { .horizontal = true, .vertical = true }
+			}, .clip = { .horizontal = true, .vertical = true, .childOffset = Clay_GetScrollOffset() }
 		};
 		Clay__ConfigureOpenElement(cedSE);
 
@@ -503,6 +502,9 @@ static void sRenderNodeCollisionShape(const SkellyEditor *pSKE,
 	mat4	boneMat;
 	Skin_GetBoneByIndexNoBind(pSkin, pSkel, nodeIndex, boneMat);
 
+	//don't use vertex buffers for these draws
+	GD_IASetVertexBuffers(pSKE->mpGD, NULL, 0, 0);
+
 	if(choice == BONE_COL_SHAPE_BOX)
 	{
 		vec3	min, max, center;
@@ -546,7 +548,7 @@ static void sRenderNodeCollisionShape(const SkellyEditor *pSKE,
 		GD_IASetIndexBuffers(pSKE->mpGD, pSKE->mpCapsule->mpIB, DXGI_FORMAT_R16_UINT, 0);
 	}
 
-	GD_VSSetShader(pSKE->mpGD, pSKE->mpWNormWPos);
+	GD_VSSetShader(pSKE->mpGD, pSKE->mpStaticVS);
 	GD_PSSetShader(pSKE->mpGD, pSKE->mpTriPS);
 
 	//materialish stuff
@@ -571,7 +573,8 @@ static void sRenderNodeCollisionShape(const SkellyEditor *pSKE,
 	}
 	else if(choice == BONE_COL_SHAPE_SPHERE)
 	{
-		GD_DrawIndexed(pSKE->mpGD, pSKE->mpSphere->mIndexCount, 0, 0);
+//		GD_DrawIndexed(pSKE->mpGD, pSKE->mpSphere->mIndexCount, 0, 0);
+		GD_DrawIndexedInstanced(pSKE->mpGD, pSKE->mpSphere->mIndexCount, 1, 0, 0, 0);
 	}
 	else if(choice == BONE_COL_SHAPE_CAPSULE)
 	{

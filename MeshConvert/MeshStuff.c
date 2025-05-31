@@ -579,6 +579,10 @@ static CharacterVert	*sMakeCharacterMeshData(GraphicsDevice *pGD,
 				case	EL_TEXCOORD4:
 					assert(false);
 					break;
+				case	EL_DATA:
+					//super annoying that blender makes these floats
+					idx	=*(((float *)pBin) + pBVs[bv].mByteOffset + i);
+					break;
 				default:
 					assert(false);
 			}
