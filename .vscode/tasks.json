@@ -1,151 +1,75 @@
-{	
+{
 	// See https://go.microsoft.com/fwlink/?LinkId=733558
 	// for the documentation about the tasks.json format
 	"version": "2.0.0",
-	"tasks": [
-		{
-			"type": "shell",
-			"label": "MC make",
-			"command": "make",
-			"group": "build",
-			"options": {"cwd": "${workspaceFolder}/MeshConvert"},
-			"problemMatcher": [],
-			"detail": "make build task",
-			"dependsOn": [ "copyGLibs", "copyDXGI", "copyD3D11", "copyNappgui" ]
-		},
-        {
-            "type": "shell",
-            "label": "copyNappgui",
-            "command": "cp nappgui_src/build/Debug/bin/*.so ${config:CurrentGameLibs}",
-            "group": "none",
-            "options": {"cwd": "${workspaceFolder}"},
-            "problemMatcher": [],
-            "detail": "Copy gui libs to game libs directory for testing."
-        },
-        {
-            "type": "shell",
-            "label": "copylibs",
-            "command": "cp GrogLibsC/libs/* libs/",
-            "group": "none",
-            "options": {"cwd": "${workspaceFolder}"},
-            "problemMatcher": [],
-            "dependsOn" : [ "aud make", "inp make", "mat make", "ui make", "mesh make", "ter make", "util make"],
-            "detail": "Copy grog libs to tool libs directory for testing."
-        },
-        {
-            "type": "shell",
-            "label": "copyGLibs",
-            "command": "cp GrogLibsC/libs/* ${config:CurrentGameLibs}",
-            "group": "none",
-            "options": {"cwd": "${workspaceFolder}"},
-			"dependsOn": [ "copylibs" ],
-            "detail": "Copy grog libs to game libs directory for testing."
-        },
-        {
-            "type": "shell",
-            "label": "copyDXGI",
-            "command": "cp GrogLibsC/dxvk-native/build/src/dxgi/libdxvk_dxgi.so ${config:CurrentGameLibs}",
-            "group": "none",
-            "options": {"cwd": "${workspaceFolder}"},
-            "detail": "Copy dxgi lib to game libs directory for testing."
-        },
-        {
-            "type": "shell",
-            "label": "copyD3D11",
-            "command": "cp GrogLibsC/dxvk-native/build/src/d3d11/libdxvk_d3d11.so ${config:CurrentGameLibs}",
-            "group": "none",
-            "options": {"cwd": "${workspaceFolder}"},
-            "detail": "Copy d3d lib to game libs directory for testing."
-        },
-        {
-            "type": "shell",
-            "label": "aud make",
-            "command": "make",
-            "group": "build",
-            "options": {"cwd": "${workspaceFolder}/GrogLibsC/AudioLib"},
-            "problemMatcher": [],
-            "detail": "make build task"
-        },
-        {
-            "type": "shell",
-            "label": "inp make",
-            "command": "make",
-            "group": "build",
-            "options": {"cwd": "${workspaceFolder}/GrogLibsC/InputLib"},
-            "problemMatcher": [],
-            "detail": "make build task"
-        },
-        {
-            "type": "shell",
-            "label": "mat make",
-            "command": "make",
-            "group": "build",
-            "options": {"cwd": "${workspaceFolder}/GrogLibsC/MaterialLib"},
-            "problemMatcher": [],
-            "detail": "make build task"
-        },
-        {
-            "type": "shell",
-            "label": "ui make",
-            "command": "make",
-            "group": "build",
-            "options": {"cwd": "${workspaceFolder}/GrogLibsC/UILib"},
-            "problemMatcher": [],
-            "detail": "make build task"
-        },
-        {
-            "type": "shell",
-            "label": "mesh make",
-            "command": "make",
-            "group": "build",
-            "options": {"cwd": "${workspaceFolder}/GrogLibsC/MeshLib"},
-            "problemMatcher": [],
-            "detail": "make build task"
-        },
-        {
-            "type": "shell",
-            "label": "ter make",
-            "command": "make",
-            "group": "build",
-            "options": {"cwd": "${workspaceFolder}/GrogLibsC/TerrainLib"},
-            "problemMatcher": [],
-            "detail": "make build task"
-        },
-        {
-            "type": "shell",
-            "label": "util make",
-            "command": "make",
-            "group": "build",
-            "options": {
-                "cwd": "${workspaceFolder}/GrogLibsC/UtilityLib"
-            },
-            "problemMatcher": [],
-            "detail": "make build task"
-        },
-        {
-            "type": "shell",
-            "label": "Compile Shaders",
-            "command": "${workspaceFolder}/GrogLibsC/GrogHLSLCompileTool/bin/Debug/net6.0/GrogHLSLCompileTool",
-            "args": ["${workspaceFolder}/GrogLibsC/ShaderLib", "SM5"],    //add more if you want SM2 SM4 etc
-            "group": "build",
-            "options": {"cwd": "${config:CurrentGame}"},
-            "problemMatcher": [
-                {
-                    "owner": "fxc",
-                    "fileLocation":"relative",
-                    "pattern": {
-                        "regexp": "(.+(?=\\())\\((.+?(?=,))\\(?,(.+?(?=[-]))[-](.+?(?=\\)))\\)\\:\\s*(warning|error)\\s*(\\w*):*\\(?(.*)",
-                        "file": 1,
-                        "line": 2,
-                        "column": 3,
-                        "endColumn": 4,
-                        "severity": 5,
-                        "code": 6,
-                        "message": 7
-                    }
-                }
-            ],
-            "detail": "hlsl build task"
-        }
-	]
+	"tasks": [{
+		"type": "shell",
+		"label": "MC build",
+		"command": "./BuildTools",
+		"group": "build",
+		"options": {"cwd": "${workspaceFolder}"},
+		"problemMatcher": [],
+		"detail": "BuildTools task",
+		"dependsOn": [ "copyGLibs", "copyDXGI", "copyD3D11", "copyNappgui" ]
+	},{
+		"type": "shell",
+		"label": "copyNappgui",
+		"command": "cp nappgui_src/build/Debug/bin/*.so ${config:CurrentGameLibs}",
+		"group": "none",
+		"options": {"cwd": "${workspaceFolder}"},
+		"problemMatcher": [],
+		"detail": "Copy gui libs to game libs directory for testing."
+	},{
+		"type": "shell",
+		"label": "copyGLibs",
+		"command": "cp libs/* ${config:CurrentGameLibs}",
+		"group": "none",
+		"options": {"cwd": "${workspaceFolder}/GrogLibsC"},
+		"dependsOn": [ "libs build" ],
+		"detail": "Copy grog libs to game libs directory for testing."
+	},{
+		"type": "shell",
+		"label": "copyDXGI",
+		"command": "cp dxvk-native/build/src/dxgi/libdxvk_dxgi.so ${config:CurrentGameLibs}",
+		"group": "none",
+		"options": {"cwd": "${workspaceFolder}/GrogLibsC"},
+		"detail": "Copy dxgi lib to game libs directory for testing."
+	},{
+		"type": "shell",
+		"label": "copyD3D11",
+		"command": "cp dxvk-native/build/src/d3d11/libdxvk_d3d11.so ${config:CurrentGameLibs}",
+		"group": "none",
+		"options": {"cwd": "${workspaceFolder}/GrogLibsC"},
+		"detail": "Copy d3d lib to game libs directory for testing."
+	},{
+		"type": "shell",
+		"label": "libs build",
+		"command": "./BuildIt --libs-all",
+		"group": "build",
+		"options": {"cwd": "${workspaceFolder}/GrogLibsC"},
+		"problemMatcher": [],
+		"detail": "BuildIt task",
+	},{
+		"type": "shell",
+		"label": "Compile Shaders",
+		"command": "${workspaceFolder}/GrogLibsC/GrogHLSLCompileTool/bin/Debug/net6.0/GrogHLSLCompileTool",
+		"args": ["${workspaceFolder}/GrogLibsC/ShaderLib", "SM5"],    //add more if you want SM2 SM4 etc
+		"group": "build",
+		"options": {"cwd": "${config:CurrentGame}"},
+		"problemMatcher": [{
+			"owner": "fxc",
+			"fileLocation":"relative",
+			"pattern": {
+				"regexp": "(.+(?=\\())\\((.+?(?=,))\\(?,(.+?(?=[-]))[-](.+?(?=\\)))\\)\\:\\s*(warning|error)\\s*(\\w*):*\\(?(.*)",
+				"file": 1,
+				"line": 2,
+				"column": 3,
+				"endColumn": 4,
+				"severity": 5,
+				"code": 6,
+				"message": 7
+			}
+		}],
+		"detail": "hlsl build task"
+	}]
 }

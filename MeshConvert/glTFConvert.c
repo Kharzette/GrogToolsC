@@ -74,6 +74,12 @@ static Accessor	*sReadAccessors(const struct json_object *pAcc)
 
 				pRet[i].mBufferView	=json_object_get_int(pVal);
 			}
+			else if(0 == strncmp("byteOffset", pKey, 10))
+			{
+				assert(t == json_type_int);
+
+				int ofs	=json_object_get_int(pVal);
+			}
 			else if(0 == strncmp("componentType", pKey, 13))
 			{
 				assert(t == json_type_int);
@@ -102,6 +108,11 @@ static Accessor	*sReadAccessors(const struct json_object *pAcc)
 				assert(t == json_type_array);
 
 				GLTF_GetVec3(pVal, pRet[i].mMax);
+			}
+			else if(0 == strncmp("name", pKey, 4))
+			{
+				int	gack	=69;
+				gack++;
 			}
 			else if(0 == strncmp("type", pKey, 4))
 			{

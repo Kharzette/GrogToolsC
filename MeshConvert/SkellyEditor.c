@@ -323,7 +323,7 @@ void	SKE_MakeClayLayout(SkellyEditor *pSKE)
 			csInfo.chars	=sInfoText;
 			csInfo.length	=strlen(sInfoText);
 
-			CLAY({ .id = CLAY_ID("SkellyInfoBox"),
+			CLAY(CLAY_ID("SkellyInfoBox"), {
 				.layout = {
 					.childAlignment = { .x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_CENTER },
 					.layoutDirection = CLAY_TOP_TO_BOTTOM,
@@ -719,7 +719,7 @@ static void sSkeletonLayout(const GSNode *pNode, SkellyEditor *pSKE, int colStat
 
 	//create an inner rect sized for the text
 	//this one will have the bone name as an ID
-	CLAY({ .id =Clay__HashString(csNode, 0, 0),
+	CLAY(Clay__HashString(csNode, 0), {
 		.layout = {
 			.childGap = 4,
 			.padding = { 8, 8, 2, 2 },

@@ -174,7 +174,7 @@ void	RC_MakeClayLayout(RayCaster *pRC)
 		rcInfo.chars	=sInfoText;
 		rcInfo.length	=strlen(sInfoText);
 
-		CLAY({ .id = CLAY_ID("RightAligner"),
+		CLAY(CLAY_ID("RightAligner"), {
 			.layout = {
 				.childAlignment = { .x = CLAY_ALIGN_X_RIGHT, .y = CLAY_ALIGN_Y_TOP},
 				.layoutDirection = CLAY_TOP_TO_BOTTOM,
@@ -183,7 +183,7 @@ void	RC_MakeClayLayout(RayCaster *pRC)
 			}
 		})
 		{
-			CLAY({ .id = CLAY_ID("RightBar"),
+			CLAY(CLAY_ID("RightBar"), {
 				.layout = {
 					.childAlignment = { .x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP},
 					.layoutDirection = CLAY_TOP_TO_BOTTOM,
@@ -192,7 +192,7 @@ void	RC_MakeClayLayout(RayCaster *pRC)
 				}, .backgroundColor = {150, 150, 155, 55}
 			})
 			{
-				CLAY({ .id = CLAY_ID("RayCaster"),
+				CLAY(CLAY_ID("RayCaster"), {
 					.layout = {
 						.childAlignment = { .x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP},
 						.layoutDirection = CLAY_TOP_TO_BOTTOM,

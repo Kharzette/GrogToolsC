@@ -7,7 +7,7 @@
 		{
 			"type": "cppdbg",
 			"request": "launch",
-			"preLaunchTask": "MC make",
+			"preLaunchTask": "MC build",
 			"name": "MC Debug",
 			"program": "${workspaceFolder}/MeshConvert/MeshConvert",
 			"args": [],
@@ -16,7 +16,17 @@
 			"cwd": "${config:CurrentGame}",
 			"additionalSOLibSearchPath": "${config:CurrentGameLibs}",
 			"MIMode": "gdb",
-			//"miDebuggerPath": "C:/cygwin64/bin/gdb.exe"
+		},
+		{
+			"type": "cppdbg",
+			"request": "launch",
+			"name": "BTools Debug",
+			"program": "${workspaceFolder}/BuildTools",
+			"args": [],
+			"stopAtEntry": false,
+			"externalConsole": true,
+			"cwd": "${workspaceFolder}",
+			"MIMode": "gdb",
 		}
 	]
 }

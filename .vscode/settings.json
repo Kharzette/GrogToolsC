@@ -20,6 +20,9 @@
         "gltffile.h": "c",
         "particleemitter.h": "c",
         "stuffkeeper.h": "c",
-        "primfactory.h": "c"
-    }
+        "primfactory.h": "c",
+        "miscstuff.h": "c",
+        "usersettings.h": "c"
+    },
+    "cmake.sourceDirectory": "/mnt/SkyFather/Code/Gits/GrogToolsC/GrogLibsC/clay/examples/raylib-sidebar-scrolling-container"
 }
