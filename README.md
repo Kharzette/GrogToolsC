@@ -86,3 +86,9 @@ Load gltf Char will load the base mesh.  Load gltf Anim loads anims.  There may 
 
 # Bone Collision
 The bone editing stuff is using in-render-window gui and slides out with the F2 key.  After that most keys will be showin in the info panel at the bottom (and will likely change as they are goofy right now).
+
+# Building
+Tools now build with a [nob.h](https://github.com/tsoding/nob.h) c file.  Run ./BuildTools.  If it isn't there do:
+```bash
+gcc BuildTools.c -o BuildTools
+```
