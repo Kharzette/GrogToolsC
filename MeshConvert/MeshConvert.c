@@ -755,6 +755,30 @@ static void	sAppDestroy(AppContext **ppApp)
 	RC_Destroy(&pAC->mpRC);
 	SKE_Destroy(&pAC->mpSKE);
 
+	//anim list
+	if(pAC->mpAnimList != NULL)
+	{
+		SZList_Clear(&pAC->mpAnimList);
+	}
+
+	//free loaded stuff if any
+	if(pAC->mpMatLib != NULL)
+	{
+		MatLib_Destroy(&pAC->mpMatLib);
+	}
+	if(pAC->mpALib != NULL)
+	{
+		AnimLib_Destroy(&pAC->mpALib);
+	}
+	if(pAC->mpChar != NULL)
+	{
+		Character_Destroy(&pAC->mpChar);
+	}
+	if(pAC->mpStatic != NULL)
+	{
+		Static_Destroy(&pAC->mpStatic);
+	}
+
 	UI_Destroy(&pAC->mpUI);
 
 	GameCam_Destroy(&pAC->mpCam);
@@ -1277,7 +1301,7 @@ static void sLoadGLTFChar(AppContext *pAC, Event *pEvt)
 
 	if(pAC->mpChar != NULL)
 	{
-		Character_Destroy(pAC->mpChar);
+		Character_Destroy(&pAC->mpChar);
 	}
 
 	GLTFFile	*pGF;
@@ -1332,7 +1356,7 @@ static void sLoadGLTFStatic(AppContext *pAC, Event *pEvt)
 
 	if(pAC->mpStatic != NULL)
 	{
-		Static_Destroy(pAC->mpStatic);
+		Static_Destroy(&pAC->mpStatic);
 	}
 
 	GLTFFile	*pGF;
@@ -1429,7 +1453,7 @@ static void sLoadCharacter(AppContext *pAC, Event *pEvt)
 
 	if(pAC->mpChar != NULL)
 	{
-		Character_Destroy(pAC->mpChar);
+		Character_Destroy(&pAC->mpChar);
 	}
 
 	pAC->mpChar	=Character_Read(pAC->mpGD, pAC->mpSK, pFileName, true);
@@ -1503,7 +1527,7 @@ static void sLoadStatic(AppContext *pAC, Event *pEvt)
 
 	if(pAC->mpStatic != NULL)
 	{
-		Static_Destroy(pAC->mpStatic);
+		Static_Destroy(&pAC->mpStatic);
 	}
 
 	pAC->mpStatic	=Static_Read(pAC->mpGD, pAC->mpSK, pFileName, true);
