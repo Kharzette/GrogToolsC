@@ -145,6 +145,10 @@ SkellyEditor	*SKE_Create(StuffKeeper *pSK, GraphicsDevice *pGD,
 	pRet->mpStaticVS	=StuffKeeper_GetVertexShader(pSK, "StaticVS");
 	pRet->mpTriPS		=StuffKeeper_GetPixelShader(pSK, "TriPS");
 
+	//ref
+	pRet->mpStaticVS->lpVtbl->AddRef(pRet->mpStaticVS);
+	pRet->mpTriPS->lpVtbl->AddRef(pRet->mpTriPS);
+
 	//prims
 	pRet->mpCube	=PF_CreateCube(1.0f, true, pGD);
 	pRet->mpSphere	=PF_CreateSphere((vec3){0,0,0}, 1.0f, true, pGD);
@@ -185,6 +189,19 @@ SkellyEditor	*SKE_Create(StuffKeeper *pSK, GraphicsDevice *pGD,
 void	SKE_Destroy(SkellyEditor **ppSKE)
 {
 	SkellyEditor	*pSKE	=*ppSKE;
+
+	//prims
+	PF_DestroyPO(&pSKE->mpCapsule);
+	PF_DestroyPO(&pSKE->mpSphere);
+	PF_DestroyPO(&pSKE->mpCube);
+
+	//deref
+	pSKE->mpStaticVS->lpVtbl->Release(pSKE->mpStaticVS);
+	pSKE->mpTriPS->lpVtbl->Release(pSKE->mpTriPS);
+
+	//movers
+	Mover_Destroy(&pSKE->mpBoneCollapse);
+	Mover_Destroy(&pSKE->mpSEM);
 
 	//nuke bone display data
 	BoneDisplayData	*pCur, *pTmp;

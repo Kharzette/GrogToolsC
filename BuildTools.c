@@ -70,7 +70,7 @@ static void	sStandardProgJunk_Add(Nob_Cmd *pCmd)
 		"-I../nappgui_src/src",
 		"-I../nappgui_src/src/osapp",
 		"-I../nappgui_src/src/gui",
-		"-Wall",
+		"-Wall", "-fsanitize=address",
 		"-Wl,-rpath=libs,--disable-new-dtags");
 }
 

@@ -115,6 +115,9 @@ void	RC_Destroy(RayCaster **ppRC)
 {
 	RayCaster	*pRC	=*ppRC;
 
+	CP_DestroyLightRay(&pRC->mpRay);
+	Mover_Destroy(&pRC->mpRCM);
+
 	free(pRC);
 
 	*ppRC	=NULL;

@@ -335,7 +335,7 @@ static void sFillShaderPopups(AppContext *pApp, const UT_string *szFile)
 
 		//pixel shaders use trilight file alot
 		szList	=StuffKeeper_GetPSEntryList(pApp->mpSK, tri);
-		utstring_done(tri);
+		utstring_free(tri);
 	}
 
 	pCur	=SZList_Iterate(szList);
@@ -752,10 +752,26 @@ static void	sAppDestroy(AppContext **ppApp)
 	printf("sAppDestroy\n");
 	sSaveWindowPositions(pAC);
 
-	SKE_Destroy(&pAC->mpSKE);
 	RC_Destroy(&pAC->mpRC);
+	SKE_Destroy(&pAC->mpSKE);
+
+	UI_Destroy(&pAC->mpUI);
+
+	GameCam_Destroy(&pAC->mpCam);
+
+	PP_Destroy(&pAC->mpPP);
+	CBK_Destroy(&pAC->mpCBK);
+
+	CP_DestroyAxis(&pAC->mpAxis);
+	CP_DestroyLightRay(&pAC->mpLR);
+
+	StuffKeeper_Destroy(&pAC->mpSK);
 
 	GD_Destroy(&pAC->mpGD);
+
+	INP_DestroyInput(&pAC->mpInp);
+
+	UserSettings_Destroy(&pAC->mpUS);
 
 	window_destroy(&pAC->mpWnd);
 
@@ -1377,13 +1393,21 @@ static void sLoadGLTFAnim(AppContext *pAC, Event *pEvt)
 
 	GLCV_ExtractAndAddAnimation(pGF, &pAC->mpALib);
 
-	//pass along to gumps
-	SKE_SetAnimLib(pAC->mpSKE, pAC->mpALib);
-	RC_SetAnimLib(pAC->mpRC, pAC->mpALib);
+	if(pAC->mpALib != NULL)
+	{
+		//pass along to gumps
+		SKE_SetAnimLib(pAC->mpSKE, pAC->mpALib);
+		RC_SetAnimLib(pAC->mpRC, pAC->mpALib);
 
-	printf("Anim loaded %s...\n", pFileName);
+		printf("Anim loaded %s...\n", pFileName);
 
-	sFillAnimListBox(pAC);
+		sFillAnimListBox(pAC);
+	}
+	else
+	{
+		printf("Anim failed to load %s...\n", pFileName);
+	}
+
 
 	GLTF_Destroy(pGF);
 }
@@ -1452,7 +1476,7 @@ static void sSaveCharacter(AppContext *pAC, Event *pEvt)
 	else
 	{
 		utstring_printf(szFileName, "%s", pFileName);
-		utstring_done(szExt);
+		utstring_free(szExt);
 	}
 
 	printf("Character save fileName: %s\n", utstring_body(szFileName));
@@ -1525,7 +1549,7 @@ static void sSaveStatic(AppContext *pAC, Event *pEvt)
 	else
 	{
 		utstring_printf(szFileName, "%s", pFileName);
-		utstring_done(szExt);
+		utstring_free(szExt);
 	}
 
 	printf("Static save fileName: %s\n", utstring_body(szFileName));
@@ -1536,7 +1560,7 @@ static void sSaveStatic(AppContext *pAC, Event *pEvt)
 
 	UT_string	*szPath	=SZ_StripFileName(pFileName);
 
-	utstring_done(szPath);
+	utstring_free(szPath);
 }
 
 static void sLoadMaterialLib(AppContext *pAC, Event *pEvt)
@@ -1598,7 +1622,7 @@ static void sSaveMaterialLib(AppContext *pAC, Event *pEvt)
 	else
 	{
 		utstring_printf(szFileName, "%s", pFileName);
-		utstring_done(szExt);
+		utstring_free(szExt);
 	}
 
 	printf("MaterialLib save fileName: %s\n", utstring_body(szFileName));
@@ -1658,7 +1682,7 @@ static void sSaveAnimLib(AppContext *pAC, Event *pEvt)
 	else
 	{
 		utstring_printf(szFileName, "%s", pFileName);
-		utstring_done(szExt);
+		utstring_free(szExt);
 	}
 
 	printf("AnimLib save fileName: %s\n", utstring_body(szFileName));
@@ -1776,7 +1800,7 @@ static void sShaderFileChanged(AppContext *pAC, Event *pEvt)
 
 	sFillShaderPopups(pAC, pSZFile);
 
-	utstring_done(pSZFile);
+	utstring_free(pSZFile);
 }
 
 static void sTexChosen(AppContext *pAC, Event *pEvt)
@@ -1868,7 +1892,7 @@ static void	sUpdateSelectedMaterial(AppContext *pApp)
 
 	MAT_SetPShader(pMat, utstring_body(pSZShader), pApp->mpSK);
 
-	utstring_done(pSZShader);
+	utstring_free(pSZShader);
 }
 
 //pLapp pLapp pLapp, get texture, get texture, get texture
@@ -2311,7 +2335,7 @@ static void sDeleteListBoxItem(ListBox *pLB, int idx)
 
 	for(int i=0;i < count;i++)
 	{
-		utstring_done(pContents[i]);
+		utstring_free(pContents[i]);
 	}
 }
 
